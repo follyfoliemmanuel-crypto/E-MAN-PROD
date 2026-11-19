@@ -28,6 +28,19 @@ git push origin main       # dépôt privé recommandé
    ```
 3. Remettre ensuite dans `.env` la chaîne de la branche `dev` pour vos essais, afin de ne jamais tester sur la base en ligne.
 
+**Sans installer Node : dans le navigateur.** Neon → projet → **SQL Editor** → branche `main` → coller tout le fichier [`db/install-neon.sql`](../db/install-neon.sql) → **Run**. Ce fichier contient les mêmes migrations et le même contenu de départ que `npm run db:migrate`, et les inscrit dans le même registre (`schema_migrations`). Les deux méthodes peuvent donc être utilisées l'une après l'autre.
+- Le fichier peut être relancé : ce qui est déjà en place est sauté, rien n'est supprimé ni écrasé.
+- Tout passe dans une seule transaction : en cas d'erreur, la base reste telle quelle.
+- La dernière requête affiche les migrations 001 à 006.
+- Pour mettre à jour une base qui contient déjà des données, créer d'abord une branche Neon de secours.
+- Après chaque nouvelle migration, régénérer le fichier avec `npm run db:sql`.
+
+**Premier administrateur :** créer le compte sur le site (« Inscription »), puis exécuter dans le SQL Editor :
+```sql
+update users set role = 'admin' where lower(email) = lower('emanprod3@gmail.com');
+```
+(ou `npm run db:admin -- emanprod3@gmail.com`). Les autres membres de l'équipe sont ensuite invités depuis Espace → Équipe.
+
 ## 3. Projet Vercel
 
 1. Vercel → *Add New* → *Project* → importer le dépôt GitHub.

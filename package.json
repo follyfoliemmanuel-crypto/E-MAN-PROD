@@ -16,7 +16,8 @@
     "db:restore": "node scripts/db.mjs restore",
     "db:demo": "node scripts/db.mjs demo",
     "db:admin": "node scripts/db.mjs admin",
-    "db:check": "node scripts/db.mjs check"
+    "db:check": "node scripts/db.mjs check",
+    "db:sql": "node scripts/build-install-sql.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

@@ -6,6 +6,7 @@
 - **Paramètres → Connexion Google** (admin) : état de la configuration, nombre de comptes reliés, et les deux adresses à déclarer dans Google Cloud. Le secret n'est jamais affiché.
 - **Fenêtre de connexion** : onglets Connexion / Inscription. En démonstration, elle montre les vrais formulaires et précise qu'ils ouvrent un tableau de bord fictif.
 - **Menu principal** : replié en dessous de 1 100 px de large (tablettes) pour laisser la place aux boutons.
+- **Base de données en un fichier** : `db/install-neon.sql`, à coller dans le SQL Editor de Neon. Il est généré depuis les migrations (`npm run db:sql`). 20 contrôles : base vide, relance, base existante avec données, base à mi-chemin (004), empreinte modifiée. Le schéma et le contenu de départ obtenus sont identiques à ceux de `db:migrate`.
 - **Vérifié** : 85 contrôles dans le navigateur, à 9 tailles d'écran de 360 à 1 440 px, pour les comptes déconnecté, CLIENT, STAFF et ADMIN, avec Google configuré, non configuré et en démonstration ; plus la non-régression complète.
 
 ## Ce qui a été vérifié (v2.8)

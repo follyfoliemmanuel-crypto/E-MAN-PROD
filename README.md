@@ -16,6 +16,7 @@
 npm install
 cp .env.example .env        # puis renseigner DATABASE_URL
 npm run db:migrate          # crée la base et le contenu de départ
+                            # (ou : coller db/install-neon.sql dans le SQL Editor de Neon)
 npm run dev                 # site et API : http://localhost:5173
 ```
 Sans base de données, pour voir le site : `npm run demo`. Détails et dépannage : [docs/INSTALLATION.md](docs/INSTALLATION.md).
@@ -54,6 +55,7 @@ Sans base de données, pour voir le site : `npm run demo`. Détails et dépannag
 api/                 fonctions serverless (une par fichier) : valident les entrées (Zod) puis appellent les services
 api/_lib/            règles métier et contrôles d'accès (services/), auth, e-mails, PDF, stockage, validation
 db/migrations/       001 → 006, appliquées dans l'ordre par db:migrate (jamais modifiées après application)
+db/install-neon.sql  les mêmes migrations + le contenu de départ en un seul fichier (npm run db:sql)
 scripts/             outils base de données (migrations, sauvegarde, restauration, démo) et prérendu SEO
 src/                 site React : pages publiques, espaces (src/pages/space), composants, styles
 public/              polices, logo, icônes, image de partage

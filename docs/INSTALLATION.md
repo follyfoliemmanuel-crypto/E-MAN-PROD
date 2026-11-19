@@ -60,6 +60,7 @@ Le site s'ouvre sur http://localhost:5173 avec des données fictives : formulair
 | `npm run db:check` | tester la connexion à la base |
 | `npm run db:migrate` | sauvegarde, migrations en attente, contenu de départ |
 | `npm run db:status` | migrations appliquées et en attente |
+| `npm run db:sql` | régénère `db/install-neon.sql` (toutes les migrations en un fichier, pour le SQL Editor de Neon) |
 | `npm run db:backup` | sauvegarde JSON de toutes les tables (voir SAUVEGARDE.md) |
 | `npm run db:restore -- backups/<dossier>` | restaurer une sauvegarde dans une base vide |
 | `npm run db:demo` (`-- --remove`) | ajouter / retirer les données de démonstration |

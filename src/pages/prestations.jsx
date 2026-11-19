@@ -4,6 +4,7 @@ import { ArrowRight, Check } from 'lucide-react';
 import { PLACEHOLDERS } from '../config.js';
 import { useCatalog } from '../lib/catalog.jsx';
 import { useSeo } from '../lib/seo.js';
+import { serviceMeta } from '../routes-meta.js';
 import { Link } from '../lib/router.jsx';
 import { useApp } from '../context.js';
 import { SmartImage, Reveal } from '../components/visual.jsx';
@@ -51,7 +52,7 @@ export function PrestationPage({ slug }) {
   const cat = useCatalog();
   const { openQuote } = useApp();
   const p = cat.prestation(slug);
-  useSeo(`/prestations/${slug}`, p && { title: `${p.title} | E-MAN PROD`, description: p.summary });
+  useSeo(`/prestations/${slug}`, p && serviceMeta(p));
 
   if (cat.status === 'loading') return <main id="contenu"><Loading lines={4} /></main>;
   if (cat.status === 'error') return <main id="contenu"><CatalogError message={cat.error} /></main>;

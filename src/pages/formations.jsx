@@ -1,9 +1,10 @@
 // Centre de formation professionnelle : les 3 pôles, puis une fiche par formation.
 import React from 'react';
-import { ArrowRight, CalendarDays, Clock3, GraduationCap, BarChart3, ListChecks, Wallet, Users, MapPin, MessageCircle } from 'lucide-react';
+import { ArrowRight, CalendarDays, Clock3, GraduationCap, ChartColumn, ListChecks, Wallet, Users, MapPin, MessageCircle } from 'lucide-react';
 import { PLACEHOLDERS, whatsappLink } from '../config.js';
 import { useCatalog } from '../lib/catalog.jsx';
 import { useSeo } from '../lib/seo.js';
+import { courseMeta } from '../routes-meta.js';
 import { Link } from '../lib/router.jsx';
 import { formatPrice, formatDay } from '../lib/api.js';
 import { SmartImage, Reveal } from '../components/visual.jsx';
@@ -102,7 +103,7 @@ function Fact({ icon: Icon, label, value, empty }) {
 export function CoursePage({ slug }) {
   const cat = useCatalog();
   const c = cat.course(slug);
-  useSeo(`/formations/${slug}`, c && { title: `Formation ${c.title} | E-MAN PROD`, description: c.summary });
+  useSeo(`/formations/${slug}`, c && courseMeta(c));
 
   if (cat.status === 'loading') return <main id="contenu"><Loading lines={6} /></main>;
   if (cat.status === 'error') return <main id="contenu"><CatalogError message={cat.error} /></main>;
@@ -176,7 +177,7 @@ export function CoursePage({ slug }) {
           <dl className="facts">
             <Fact icon={GraduationCap} label="Domaine" value={c.domain} />
             <Fact icon={Clock3} label="Durée" value={c.duration} empty="À préciser" />
-            <Fact icon={BarChart3} label="Niveau" value={c.level} empty="À préciser" />
+            <Fact icon={ChartColumn} label="Niveau" value={c.level} empty="À préciser" />
             <Fact icon={ListChecks} label="Prérequis" value={c.prerequisites} empty="À préciser" />
             <Fact icon={Wallet} label="Tarif" value={c.price_fcfa !== null && c.price_fcfa !== undefined ? formatPrice(c.price_fcfa, c.price_note) : null} empty="Nous consulter" />
             {c.certificate && <Fact icon={GraduationCap} label="À l’issue" value={c.certificate} />}

@@ -15,14 +15,25 @@ export function send(res, status, body, headers = {}) {
   res.end(JSON.stringify(body));
 }
 
+const MAX_BODY = 64 * 1024;
+
 export async function readJson(req) {
-  if (req.body && typeof req.body === 'object') return req.body;
-  if (typeof req.body === 'string') return safeParse(req.body);
+  // Sur Vercel, le corps est déjà lu par la plateforme (jusqu'à 4,5 Mo) : la limite de
+  // l'application est donc aussi vérifiée sur la taille annoncée et sur le texte reçu.
+  if (Number(req.headers?.['content-length'] || 0) > MAX_BODY) throw new HttpError(413, 'Requête trop volumineuse.');
+  if (req.body && typeof req.body === 'object') {
+    if (Buffer.byteLength(JSON.stringify(req.body)) > MAX_BODY) throw new HttpError(413, 'Requête trop volumineuse.');
+    return req.body;
+  }
+  if (typeof req.body === 'string') {
+    if (Buffer.byteLength(req.body) > MAX_BODY) throw new HttpError(413, 'Requête trop volumineuse.');
+    return safeParse(req.body);
+  }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 64 * 1024) throw new HttpError(413, 'Requête trop volumineuse.');
+    if (size > MAX_BODY) throw new HttpError(413, 'Requête trop volumineuse.');
     chunks.push(chunk);
   }
   return safeParse(Buffer.concat(chunks).toString('utf8'));

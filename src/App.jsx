@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppContext } from './context.js';
 import { auth } from './lib/api.js';
 import { usePath, navigate, scrollToHash } from './lib/router.jsx';
@@ -15,7 +15,9 @@ import { TrainingCenter, CoursePage } from './pages/formations.jsx';
 import { Realisations } from './pages/gallery.jsx';
 import { About, EmanCars } from './pages/about.jsx';
 import { NotFound } from './components/page.jsx';
-import Dashboard from './pages/Dashboard.jsx';
+// L'espace client et administrateur n'est téléchargé qu'à son ouverture : les visiteurs
+// du site public ne chargent pas ce code (environ 40 % du JavaScript de l'application).
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 
 const PAGES = {
   '/': Home,
@@ -140,7 +142,9 @@ export default function App() {
       <HashOnLoad />
       <Header />
       <div className="page">
-        <Page key={path} {...route.props} />
+        <Suspense fallback={<main id="contenu" className="space" aria-busy="true"><p className="wrap muted" style={{ padding: '48px 0' }}>Chargement de votre espace…</p></main>}>
+          <Page key={path} {...route.props} />
+        </Suspense>
       </div>
       <Footer />
       <WhatsAppButton />

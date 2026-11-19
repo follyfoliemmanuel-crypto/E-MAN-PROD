@@ -157,7 +157,7 @@ html.modal-open { overflow: hidden; }
 .audience h2 { font: 700 1.3rem/1.25 var(--display); letter-spacing: -.01em; }
 .audience p { color: var(--muted); }
 .audience .cardLink { margin-top: 6px; }
-.badge { justify-self: start; padding: 5px 10px; border-radius: 999px; font-size: .72rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
+.badge { justify-self: start; padding: 5px 10px; border-radius: 999px; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; }
 .tone-paper { background: #fff; border: 1px solid var(--rule); }
 .tone-paper .badge { background: var(--plate); color: var(--ink); }
 .tone-sky { background: var(--sky); }
@@ -707,7 +707,7 @@ select { max-width: 100%; text-overflow: ellipsis; }
 .poleNumber { font: 800 clamp(4rem, 9vw, 6.5rem)/.85 var(--display); color: var(--blue); opacity: .18; letter-spacing: -.04em; }
 .poleSummary { margin-top: 12px; color: var(--muted); max-width: 70ch; }
 .cGrid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
-.cCardDomain { font-size: .74rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--red); }
+.cCardDomain { font-size: .75rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--red); }
 .cCardMeta { display: flex; gap: 8px; align-items: center; color: var(--ink) !important; font-size: .88rem !important; font-weight: 500; flex: 0 !important; }
 .cCardMeta svg { color: var(--blue); flex-shrink: 0; }
 
@@ -755,7 +755,7 @@ select { max-width: 100%; text-overflow: ellipsis; }
 .contactLine { display: flex; gap: 10px; align-items: center; }
 .contactLine svg { color: var(--red); }
 .contactLine a { font-weight: 600; }
-.siteRole { display: inline-block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; padding: 1px 8px; border-radius: 999px; background: var(--plate); color: var(--ink); margin-right: 4px; }
+.siteRole { display: inline-block; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; padding: 1px 8px; border-radius: 999px; background: var(--plate); color: var(--ink); margin-right: 4px; }
 .contactList.invert .siteRole { background: rgba(255, 255, 255, .14); color: #fff; }
 .contactList .hoursLine { display: flex; gap: 6px; align-items: center; font-size: .9rem; }
 
@@ -939,7 +939,7 @@ select { max-width: 100%; text-overflow: ellipsis; }
 .spaceNav nav button.active { background: #eef1fd; color: var(--blue); font-weight: 600; box-shadow: inset 3px 0 0 var(--blue); }
 .spaceNav nav button span:first-of-type { flex: 1; }
 .spaceLogout { margin-top: auto; }
-.badgeCount { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--red); color: #fff; font-size: .72rem; font-weight: 700; display: inline-grid; place-items: center; }
+.badgeCount { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--red); color: #fff; font-size: .75rem; font-weight: 700; display: inline-grid; place-items: center; }
 .spaceMain { padding: clamp(20px, 3vw, 40px); display: grid; gap: 22px; align-content: start; min-width: 0; }
 .spaceTopbar { display: none; }
 .sectionHeadSpace { display: flex; justify-content: space-between; gap: 16px; align-items: flex-end; flex-wrap: wrap; }
@@ -1174,3 +1174,18 @@ details.spaceBlock > summary { cursor: pointer; }
   .noteList li time { grid-row: auto; grid-column: 1; }
   .noteList li .noteActions { justify-content: flex-start; flex-wrap: wrap; }
 }
+
+/* v3.0 — écrans tactiles : liens isolés d'au moins 44 px de haut (recommandation WCAG 2.5.5). */
+@media (pointer: coarse) {
+  .toTop, .textLink, .dropdownAll, .chartToggle, .contactList a, .contactLine a, .bigPhone,
+  .footer a[href^="tel:"], .linkBtn { min-height: 44px; display: inline-flex; align-items: center; }
+  .consent input[type="checkbox"], .check input[type="checkbox"] { width: 22px; height: 22px; }
+  .consent, .check { min-height: 44px; align-items: center; }
+}
+.poleChip strong { white-space: nowrap; }
+/* v3.0 — pendant le chargement du catalogue, le bloc d'attente occupe l'écran : la suite de la
+   page (bandeau, pied de page) reste hors champ et ne « saute » pas à l'arrivée du contenu (CLS). */
+.loadingBlock { min-height: 100vh; min-height: 100svh; align-content: start; }
+/* Place des commandes du diaporama réservée dès le premier affichage (évite un décalage). */
+.heroTheme { min-height: 1.5em; }
+@media (max-width: 900px) { .heroControls { min-height: 109px; } }

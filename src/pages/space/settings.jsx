@@ -1,7 +1,7 @@
 // Paramètres (administrateurs) : coordonnées, WhatsApp, réseaux sociaux, informations légales,
 // documents, e-mails (modèles, essai, journal) et notifications. Annonces aux clients.
 import React, { useState } from 'react';
-import { Send, Eye, Megaphone, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Send, Eye, Megaphone, CircleCheck, TriangleAlert } from 'lucide-react';
 import { useCatalog } from '../../lib/catalog.jsx';
 import { space, fetchCatalog, formatDate } from '../../lib/api.js';
 import { WHATSAPP_PURPOSES, BUSINESS } from '../../config.js';
@@ -187,7 +187,7 @@ function EmailsAdmin({ notify, overrides, onSave }) {
   return (
     <>
       <section className={`spaceBlock mailStatus ${data.configured ? 'ok' : 'warn'}`} aria-labelledby="mail-status">
-        <h2 className="subTitle" id="mail-status">{data.configured ? <><CheckCircle2 size={18} aria-hidden="true" /> Envoi d’e-mails configuré</> : <><AlertTriangle size={18} aria-hidden="true" /> Envoi d’e-mails non configuré</>}</h2>
+        <h2 className="subTitle" id="mail-status">{data.configured ? <><CircleCheck size={18} aria-hidden="true" /> Envoi d’e-mails configuré</> : <><TriangleAlert size={18} aria-hidden="true" /> Envoi d’e-mails non configuré</>}</h2>
         <dl className="kv">
           <dt>Fournisseur</dt><dd>{data.provider || 'aucun'}{data.provider && !data.key ? ' (clé manquante)' : ''}</dd>
           <dt>Adresse d’expédition</dt><dd>{data.from || 'non définie (MAIL_FROM)'}</dd>

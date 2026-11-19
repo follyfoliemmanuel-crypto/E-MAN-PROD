@@ -1,7 +1,11 @@
 // Titres et descriptions de chaque page. Utilisé par le site (onglet du navigateur)
 // et par scripts/prerender-meta.mjs, qui écrit une page HTML par adresse au moment
 // du build pour Google et les aperçus WhatsApp / Facebook.
-export const SITE_URL = 'https://www.emanprod.com';
+// Adresse publique du site : VITE_SITE_URL au build (Vercel), SITE_URL pour le prérendu,
+// sinon le domaine prévu. À aligner sur le domaine réellement acheté.
+const viteEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined;
+const nodeEnv = typeof process !== 'undefined' ? process.env : undefined;
+export const SITE_URL = (viteEnv?.VITE_SITE_URL || nodeEnv?.SITE_URL || 'https://www.emanprod.com').replace(/\/$/, '');
 
 export const ROUTES = {
   '/': {
@@ -10,18 +14,18 @@ export const ROUTES = {
     sitemap: true,
   },
   '/prestations': {
-    title: 'Prestations : imprimerie, infographie, sérigraphie, enseignes | E-MAN PROD',
+    title: 'Imprimerie, infographie, enseignes à Lomé | E-MAN PROD',
     description: 'Imprimerie, infographie, sérigraphie, enseignes et publicité, papeterie, informatique : les prestations d’E-MAN PROD à Lomé et Agbavi. Devis rapide.',
     sitemap: true,
   },
   '/formations': {
-    title: 'Centre de formation professionnelle E-MAN PROD | 3 pôles',
+    title: 'Centre de formation professionnelle à Lomé (Togo) | E-MAN PROD',
     description: 'Arts graphiques et imprimerie, informatique, maintenance et réseaux, développement web : les formations pratiques du centre E-MAN PROD au Togo.',
     sitemap: true,
   },
   '/realisations': {
-    title: 'Nos réalisations | E-MAN PROD',
-    description: 'Galerie des réalisations E-MAN PROD : infographie, impression, sérigraphie, enseignes, personnalisation et packaging.',
+    title: 'Nos réalisations à Lomé : impression, enseignes, textile | E-MAN PROD',
+    description: 'Galerie des réalisations d’E-MAN PROD à Lomé (Togo) : infographie, impression grand format, sérigraphie, enseignes, personnalisation textile et packaging.',
     sitemap: true,
   },
   '/a-propos': {
@@ -30,8 +34,8 @@ export const ROUTES = {
     sitemap: true,
   },
   '/e-man-cars': {
-    title: 'E-MAN CARS | Véhicules neufs et haut de gamme',
-    description: 'E-MAN CARS, la branche automobile du groupe E-MAN : véhicules neufs et haut de gamme.',
+    title: 'E-MAN CARS : véhicules neufs et haut de gamme au Togo | E-MAN PROD',
+    description: 'E-MAN CARS, la branche automobile du groupe E-MAN au Togo : véhicules neufs et haut de gamme. Renseignements par WhatsApp ou au Nouveau Marché de Baguida.',
     sitemap: true,
   },
   '/contact': {
@@ -41,17 +45,22 @@ export const ROUTES = {
   },
   '/espace': {
     title: 'Mon espace | E-MAN PROD',
-    description: 'Suivez vos demandes de devis et commandes E-MAN PROD.',
+    description: 'Votre espace E-MAN PROD : suivez vos demandes de devis, vos commandes, vos formations, vos factures et vos documents.',
     noindex: true,
   },
   '/mentions-legales': {
     title: 'Mentions légales | E-MAN PROD',
-    description: 'Mentions légales du site E-MAN PROD.',
+    description: 'Mentions légales du site E-MAN PROD : éditeur, siège au Nouveau Marché de Baguida (Lomé, Togo), hébergement, propriété intellectuelle et contact.',
     sitemap: true,
   },
   '/confidentialite': {
     title: 'Politique de confidentialité | E-MAN PROD',
-    description: 'Comment E-MAN PROD collecte et protège vos données personnelles.',
+    description: 'Comment E-MAN PROD (Baguida, Togo) collecte, utilise et protège vos données personnelles (devis, commandes, formations) et comment exercer vos droits.',
+    sitemap: true,
+  },
+  '/verifier': {
+    title: 'Vérifier une attestation de formation | E-MAN PROD',
+    description: 'Vérifiez l’authenticité d’une attestation ou d’un certificat délivré par le centre de formation E-MAN PROD (Togo) grâce au code imprimé sur le document.',
     sitemap: true,
   },
 };
@@ -61,3 +70,57 @@ export const NOT_FOUND = {
   description: 'Cette page n’existe pas.',
   noindex: true,
 };
+
+// ---------------------------------------------------------------------------------------
+// Pages dynamiques : titre, description et données structurées (schema.org) d'une
+// formation ou d'une prestation. Utilisé par le site et par le prérendu du build.
+const ORG = { '@type': 'Organization', name: 'E-MAN PROD', sameAs: SITE_URL };
+const clip = (s, n = 158) => (s.length > n ? `${s.slice(0, n - 1).replace(/\s+\S*$/, '')}…` : s);
+const crumbs = (items) => ({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: items.map(([name, path], i) => ({ '@type': 'ListItem', position: i + 1, name, item: SITE_URL + path })),
+});
+
+export function courseMeta(c) {
+  const path = `/formations/${c.slug}`;
+  return {
+    // Titre court (moins de 66 caractères) : Google coupe les titres plus longs.
+    title: [`Formation ${c.title} à Lomé | E-MAN PROD`, `${c.title} à Lomé | E-MAN PROD`, `${c.title} | E-MAN PROD`].find((t) => t.length <= 65) || `${c.title} | E-MAN PROD`,
+    description: clip(`${c.summary} Formation pratique au centre E-MAN PROD, Baguida (Lomé, Togo)${c.duration ? `, durée ${c.duration}` : ''}.`),
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Course',
+        name: c.title,
+        description: c.description || c.summary,
+        url: SITE_URL + path,
+        inLanguage: 'fr',
+        provider: ORG,
+        ...(c.price_fcfa ? { offers: { '@type': 'Offer', price: String(c.price_fcfa), priceCurrency: 'XOF', category: 'Paid' } } : {}),
+        ...(c.duration ? { timeRequired: c.duration } : {}),
+      },
+      crumbs([['Accueil', '/'], ['Formations', '/formations'], [c.title, path]]),
+    ],
+  };
+}
+
+export function serviceMeta(p) {
+  const path = `/prestations/${p.slug}`;
+  return {
+    title: [`${p.title} à Lomé (Togo) | E-MAN PROD`, `${p.title} à Lomé | E-MAN PROD`].find((t) => t.length <= 65) || `${p.title} | E-MAN PROD`,
+    description: clip(`${p.summary} E-MAN PROD, Nouveau Marché de Baguida et Agbavi (Lomé, Togo). Devis rapide sur WhatsApp.`),
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Service',
+        name: p.title,
+        description: p.summary,
+        url: SITE_URL + path,
+        areaServed: { '@type': 'Country', name: 'Togo' },
+        provider: { '@type': 'LocalBusiness', '@id': `${SITE_URL}/#entreprise`, name: 'E-MAN PROD' },
+      },
+      crumbs([['Accueil', '/'], ['Prestations', '/prestations'], [p.title, path]]),
+    ],
+  };
+}

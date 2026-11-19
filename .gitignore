@@ -1,0 +1,25 @@
+# Dépendances et builds
+node_modules/
+dist/
+.vercel/
+
+# Secrets : aucun fichier d'environnement réel n'est versionné.
+.env
+.env.*
+!.env.example
+!.env.demo
+
+# Données locales (ne jamais versionner de données réelles)
+backups/
+.uploads/
+*.dump
+*.sql.gz
+
+# Journaux et fichiers système
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+coverage/

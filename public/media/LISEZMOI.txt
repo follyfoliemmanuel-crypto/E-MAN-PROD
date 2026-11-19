@@ -1,0 +1,2 @@
+Déposez ici vos photos (ex. bache-boutique.jpg), puis indiquez /media/bache-boutique.jpg
+dans l’espace admin, onglet « Images du site ».

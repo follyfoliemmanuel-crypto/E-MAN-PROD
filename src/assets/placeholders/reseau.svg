@@ -1,0 +1,8 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1000' preserveAspectRatio='xMidYMid slice'>
+<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#0e1a3a'/><stop offset='1' stop-color='#1e26c4'/></linearGradient>
+<pattern id='dots' width='28' height='28' patternUnits='userSpaceOnUse' patternTransform='rotate(15)'><circle cx='14' cy='14' r='3' fill='#ffffff' fill-opacity='.10'/></pattern>
+<radialGradient id='v' cx='.7' cy='.5' r='.7'><stop offset='0' stop-color='#fff' stop-opacity='.10'/><stop offset='1' stop-color='#fff' stop-opacity='0'/></radialGradient></defs>
+<rect width='1600' height='1000' fill='url(#g)'/><rect width='1600' height='1000' fill='url(#dots)'/><rect width='1600' height='1000' fill='url(#v)'/>
+<g transform='translate(260 0)' fill='none' stroke='#ffffff' stroke-opacity='.42' stroke-width='14' stroke-linecap='round' stroke-linejoin='round'><path d='M800 300a50 50 0 1 0 0.1 0'/><path d='M560 600a50 50 0 1 0 0.1 0'/><path d='M1040 600a50 50 0 1 0 0.1 0'/><path d='M800 760a40 40 0 1 0 0.1 0'/><path d='M780 395L590 555'/><path d='M820 395l190 160'/><path d='M610 650l150 100'/><path d='M990 650l-150 100'/><path d='M600 600h400'/></g>
+<rect x='0' y='940' width='540' height='8' fill='#1e26c4'/><rect x='1060' y='940' width='540' height='8' fill='#d3121c'/>
+</svg>

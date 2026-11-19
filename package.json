@@ -1,0 +1,36 @@
+{
+  "name": "eman-prod-digital",
+  "private": true,
+  "version": "2.8.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "demo": "vite --mode demo",
+    "build": "vite build && node scripts/prerender-meta.mjs",
+    "preview": "vite preview",
+    "dev:vercel": "vercel dev",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:setup": "node scripts/db.mjs migrate",
+    "db:status": "node scripts/db.mjs status",
+    "db:backup": "node scripts/db.mjs backup",
+    "db:demo": "node scripts/db.mjs demo",
+    "db:admin": "node scripts/db.mjs admin",
+    "db:check": "node scripts/db.mjs check"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
+    "lucide-react": "^0.468.0",
+    "pdf-lib": "^1.17.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "pg": "^8.13.1",
+    "vite": "^6.0.7"
+  },
+  "engines": {
+    "node": ">=24.7"
+  }
+}

@@ -48,7 +48,7 @@ update users set role = 'admin' where lower(email) = lower('emanprod3@gmail.com'
 3. *Settings* → *General* → **Node.js Version : 24.x** (nécessaire pour Argon2id).
 4. *Settings* → *Environment Variables* (environnement *Production*), au minimum :
    `DATABASE_URL`, `SITE_URL`, `VITE_SITE_URL`, `AUTH_SECRET`, `VITE_WHATSAPP_NUMBER`,
-   puis selon les services : `GOOGLE_*`, `MAIL_*`, `CLOUDINARY_*` (voir CONFIGURATION.md). Ensuite, sur votre poste : `npm run storage:check` (vrai test d'envoi, lecture et suppression chez Cloudinary).
+   puis selon les services : `GOOGLE_*`, `MAIL_*`, `CLOUDINARY_*` (voir CONFIGURATION.md). **À chaque déploiement de production, la base est mise à jour automatiquement** (`npm run vercel-build` : migrations en attente + contenu de départ, sans rien effacer ; en cas d'erreur, le déploiement échoue et la version précédente reste en ligne ; les déploiements de prévisualisation ne touchent jamais la base). Le fichier `db/install-neon.sql` reste disponible pour une installation à la main. Ensuite, sur votre poste : `npm run storage:check` (vrai test d'envoi, lecture et suppression chez Cloudinary).
 5. *Deploy*. `vercel.json` gère déjà : adresses des pages, plan du site `/sitemap.xml`, en-têtes de sécurité (CSP, HSTS…), cache des fichiers.
 
 Le build exécute `vite build` puis `scripts/prerender-meta.mjs`, qui écrit une page HTML par adresse (titre, description, données structurées) et `robots.txt` pour le domaine de `VITE_SITE_URL`/`SITE_URL`.

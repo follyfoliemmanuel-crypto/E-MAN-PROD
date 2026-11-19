@@ -17,7 +17,7 @@ import { SmartImage } from '../components/visual.jsx';
 import { useApp } from '../context.js';
 import { navigate } from '../lib/router.jsx';
 import {
-  DEMO, auth, fetchRegistrations, updateRegistration, saveMedia, resetMedia, TRAINING_STATUSES, formatDate, space, security, avatarUrl,
+  DEMO, auth, fetchRegistrations, updateRegistration, saveMedia, resetMedia, uploadFile, TRAINING_STATUSES, formatDate, space, security, avatarUrl,
 } from '../lib/api.js';
 
 const tone = (s) => ({ 'Terminé': 'done', 'Inscrit': 'done', 'Contacté': 'work', 'Annulé': 'off' }[s] || 'new');
@@ -374,8 +374,8 @@ function MediaAdmin({ notify }) {
   return (
     <div className="mediaAdmin">
       <p className="muted mediaIntro">
-        Collez l’adresse d’une photo (https://…) ou le chemin d’un fichier déposé dans <code>public/media/</code> (par exemple <code>/media/bache.jpg</code>).
-        Utilisez uniquement des photos dont vous avez les droits, et ne présentez une photo comme une réalisation d’E-MAN PROD que si c’en est une.
+        Choisissez une photo sur votre ordinateur ou votre téléphone (JPG, PNG ou WebP, 5 Mo maximum) : elle est envoyée, optimisée et affichée sur le site aussitôt.
+        Vous pouvez aussi coller l’adresse d’une image (https://…). Utilisez uniquement des photos dont vous avez les droits, et ne présentez une photo comme une réalisation d’E-MAN PROD que si c’en est une.
       </p>
       {groups.map((g) => (
         <section key={g} className="mediaGroup">
@@ -417,6 +417,24 @@ function MediaRow({ def, current, onSaved, notify }) {
     }
   }
 
+  // Photo envoyée depuis le tableau de bord : stockée sur Cloudinary, affichée aussitôt.
+  async function sendPhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy(true);
+    try {
+      const up = await uploadFile('site_media', null, file);
+      await saveMedia({ slot: def.slot, file_id: up.id, alt: alt.trim().length >= 3 ? alt : def.alt, credit });
+      notify(`Photo mise en ligne : ${def.label}.`);
+      onSaved();
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function reset() {
     setBusy(true);
     try {
@@ -438,7 +456,10 @@ function MediaRow({ def, current, onSaved, notify }) {
           <strong>{def.label}</strong>
           <span className={'tag ' + (custom ? 'done' : 'new')}>{custom ? 'Photo personnalisée' : 'Visuel provisoire'}</span>
         </div>
-        <label className="field"><span className="fieldLabel">Adresse de l’image</span>
+        <label className="field"><span className="fieldLabel">Envoyer une photo</span>
+          <input type="file" accept=".jpg,.jpeg,.png,.webp" disabled={busy} onChange={sendPhoto} />
+        </label>
+        <label className="field"><span className="fieldLabel">… ou adresse d’une image</span>
           <input required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… ou /media/photo.jpg" inputMode="url" />
         </label>
         <div className="fieldRow">
@@ -450,7 +471,7 @@ function MediaRow({ def, current, onSaved, notify }) {
           </label>
         </div>
         <div className="mediaActions">
-          <button className="btn btnPrimary btnSmall" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</button>
+          <button className="btn btnPrimary btnSmall" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer l’adresse'}</button>
           {custom && <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={reset}>Revenir au visuel provisoire</button>}
         </div>
       </form>

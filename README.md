@@ -15,7 +15,7 @@
 ```bash
 npm install
 cp .env.example .env        # puis renseigner DATABASE_URL
-npm run db:migrate          # crée la base et le contenu de départ
+npm run db:migrate          # crée la base et le contenu de départ (en ligne : automatique à chaque déploiement)
                             # (ou : coller db/install-neon.sql dans le SQL Editor de Neon)
 npm run dev                 # site et API : http://localhost:5173
 ```

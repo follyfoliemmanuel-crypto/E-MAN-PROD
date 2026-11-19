@@ -42,11 +42,11 @@ export default handler({
     }
 
     const data = await loadCatalog({ all });
-    // Le CDN de Vercel garde le contenu public une minute ; le navigateur, lui,
-    // revalide toujours, pour que les places restantes soient à jour.
+    // Jamais de copie en cache côté CDN : une modification faite dans l'espace
+    // administrateur (numéros, textes, prix, places) s'applique au chargement suivant.
     send(res, 200, data, all ? {} : {
       'Cache-Control': 'public, max-age=0, must-revalidate',
-      'Vercel-CDN-Cache-Control': 's-maxage=60, stale-while-revalidate=300',
+      'Vercel-CDN-Cache-Control': 'no-store',
     });
   },
 });

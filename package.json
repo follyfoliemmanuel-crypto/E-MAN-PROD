@@ -1,12 +1,13 @@
 {
   "name": "eman-prod-digital",
   "private": true,
-  "version": "3.2.0",
+  "version": "3.2.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "demo": "vite --mode demo",
     "build": "vite build && node scripts/prerender-meta.mjs",
+    "vercel-build": "node scripts/vercel-build.mjs",
     "preview": "vite preview",
     "dev:vercel": "vercel dev",
     "db:migrate": "node scripts/db.mjs migrate",

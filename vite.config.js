@@ -24,7 +24,12 @@ export default defineConfig(({ mode }) => {
     if (!key.startsWith('VITE_') && process.env[key] === undefined) process.env[key] = value;
   }
 
+  // Une seule variable pour l'adresse du site : SITE_URL suffit (VITE_SITE_URL reste accepté),
+  // sinon le domaine de production fourni par Vercel.
+  const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : '';
+  const siteUrl = env.VITE_SITE_URL || env.SITE_URL || vercelUrl || '';
   return {
+    define: siteUrl ? { 'import.meta.env.VITE_SITE_URL': JSON.stringify(siteUrl) } : {},
     plugins: [react(), localApi()],
     server: { port: 5173, open: true },
   };

@@ -14,7 +14,7 @@ Les informations de l'entreprise (coordonnées, WhatsApp, mentions légales, con
 |---|---|---|---|
 | `DATABASE_URL` | **oui** | Base PostgreSQL (Neon en ligne) | `postgresql://…neon.tech/neondb?sslmode=require` |
 | `SITE_URL` | **oui** en ligne | Adresse publique : liens des e-mails, retour Google, sitemap | `https://www.emanprod.com` |
-| `VITE_SITE_URL` | **oui** en ligne | Même adresse, lue au build : URL canoniques, aperçus de liens | `https://www.emanprod.com` |
+| `VITE_SITE_URL` | non | Ancien nom, encore accepté : `SITE_URL` suffit désormais (lue au build et par le serveur ; à défaut, l'adresse de production Vercel) | |
 | `AUTH_SECRET` | conseillé | Chaîne aléatoire (32+ caractères) pour anonymiser les adresses IP du journal | `openssl rand -hex 32` |
 | `VITE_WHATSAPP_NUMBER` | conseillé | Numéro WhatsApp principal par défaut (sans +) | `22891388405` |
 | `VITE_CONTACT_EMAIL` | non | E-mail de contact par défaut | `emanprod3@gmail.com` |
@@ -36,7 +36,11 @@ Les informations de l'entreprise (coordonnées, WhatsApp, mentions légales, con
 
 Anciennes variables encore acceptées : `RESEND_API_KEY`, `BREVO_API_KEY`. Variables réservées aux tests (ne pas définir en ligne ; ignorées sur Vercel pour les adresses de test) : `MAIL_TEST_ENDPOINT`, `CLOUDINARY_TEST_API_BASE`, `CLOUDINARY_TEST_DELIVERY_BASE`, `STORAGE_DRIVER`, `LOCAL_UPLOAD_DIR`, `FILES_SECRET`.
 
-Après toute modification dans Vercel : **redéployer** (Deployments → … → *Redeploy*). Les variables `VITE_*` sont intégrées au moment du build.
+**Pourquoi une variable ajoutée dans Vercel « ne s'applique pas »** : Vercel fige les variables dans chaque déploiement. Une variable ajoutée ou modifiée ne vaut que pour le **déploiement suivant**, jamais pour celui qui est en ligne. C'est une règle de Vercel, aucun code ne peut la contourner. Après chaque ajout ou modification : *Deployments* → dernier déploiement → *…* → **Redeploy** (environ une minute). Vérifiez aussi que la variable est cochée pour l'environnement **Production**. En local, arrêtez puis relancez `npm run dev` après avoir modifié `.env`.
+
+Ce qui s'applique **sans redéploiement** : tout ce qui se règle dans l'espace administrateur (numéros WhatsApp, coordonnées, textes, prix, photos du site, réalisations, modèles d'e-mails, conditions des devis) est visible au chargement suivant de la page, sans cache intermédiaire.
+
+Ce qui se fait **tout seul au redéploiement** : les migrations de la base et le contenu de départ (voir DEPLOIEMENT.md) ; aucun SQL à lancer à la main.
 
 ## 2. Base de données (Neon)
 

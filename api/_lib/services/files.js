@@ -260,6 +260,17 @@ export async function downloadUrl(actor, id, { inline = false } = {}) {
 }
 
 /**
+ * Effacement d'un fichier remplacé (photo du site, réalisation) : chez son fournisseur
+ * puis dans la base. Appelé après un contrôle des droits fait par l'appelant.
+ */
+export async function deleteStoredFile(id) {
+  const f = await one(`select f.id, f.purpose, f.visibility, f.mime_type, ${STORE_COLS} from uploaded_files f where f.id = $1`, [id]);
+  if (!f) return;
+  await guarded('delete', f, () => providerOf(f).remove(f));
+  await query('delete from uploaded_files where id = $1 returning id', [id]);
+}
+
+/**
  * Adresse durable d'une image publique (réalisation) : CDN Cloudinary (format et compression
  * automatiques) ; pour un ancien fichier, le lien contrôlé /api/files.
  */

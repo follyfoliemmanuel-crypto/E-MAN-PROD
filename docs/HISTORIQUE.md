@@ -1,5 +1,11 @@
 # Historique des versions et des vérifications
 
+## v3.2.1 — plus rien à faire à la main après la configuration
+- **Base mise à jour automatiquement** à chaque déploiement de production (migrations + contenu de départ) : plus de SQL à lancer.
+- **Réglages admin appliqués aussitôt** : contenu public et photos du site jamais gardés en cache par le CDN.
+- **Une seule variable d'adresse** : `SITE_URL` (ou, à défaut, l'adresse de production Vercel).
+- **Photos du site depuis le tableau de bord** : Images et bannières → « Envoyer une photo » remplace chaque visuel provisoire (carrousel, pages, prestations, formations) ; photo stockée et optimisée par Cloudinary, l'ancienne est effacée.
+
 ## v3.2 — fichiers sur Cloudinary, métadonnées dans Neon
 - **Cloudinary fournisseur unique** : images (`image`) et documents (`raw`), envoi direct navigateur → Cloudinary signé par le serveur, aucun fichier ne passe par Vercel, aucun SDK ajouté.
 - **Confidentialité** : tout est privé (`authenticated`) sauf les réalisations ; liens de téléchargement signés de 5 minutes après contrôle des droits ; PDF et archives toujours en pièce jointe.

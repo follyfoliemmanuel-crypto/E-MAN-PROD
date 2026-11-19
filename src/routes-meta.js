@@ -1,11 +1,12 @@
 // Titres et descriptions de chaque page. Utilisé par le site (onglet du navigateur)
 // et par scripts/prerender-meta.mjs, qui écrit une page HTML par adresse au moment
 // du build pour Google et les aperçus WhatsApp / Facebook.
-// Adresse publique du site : VITE_SITE_URL au build (Vercel), SITE_URL pour le prérendu,
-// sinon le domaine prévu. À aligner sur le domaine réellement acheté.
+// Adresse publique du site : SITE_URL (une seule variable, lue au build par vite.config.js
+// et par le prérendu), sinon le domaine de production Vercel, sinon le domaine prévu.
 const viteEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined;
 const nodeEnv = typeof process !== 'undefined' ? process.env : undefined;
-export const SITE_URL = (viteEnv?.VITE_SITE_URL || nodeEnv?.SITE_URL || 'https://www.emanprod.com').replace(/\/$/, '');
+const vercelUrl = nodeEnv?.VERCEL_PROJECT_PRODUCTION_URL ? `https://${nodeEnv.VERCEL_PROJECT_PRODUCTION_URL}` : '';
+export const SITE_URL = (viteEnv?.VITE_SITE_URL || nodeEnv?.SITE_URL || nodeEnv?.VITE_SITE_URL || vercelUrl || 'https://www.emanprod.com').replace(/\/$/, '');
 
 export const ROUTES = {
   '/': {

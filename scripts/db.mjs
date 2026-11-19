@@ -5,6 +5,7 @@
 //   npm run db:setup          identique (ancien nom)
 //   npm run db:status         migrations appliquées et en attente
 //   npm run db:backup         sauvegarde de toutes les tables dans backups/
+//   npm run db:restore -- backups/<dossier>   restaure une sauvegarde dans une base VIDE
 //   npm run db:demo           données de démonstration (-- --remove pour les retirer)
 //   npm run db:admin -- email@exemple.com   donne le rôle administrateur à ce compte
 //   npm run db:check          vérifie la connexion
@@ -89,6 +90,13 @@ try {
     if (!pending.length && !altered.length) console.log('✔ Base à jour.');
   } else if (command === 'backup') {
     await doBackup(args[0] || 'manuelle');
+  } else if (command === 'restore') {
+    const dir = args[0];
+    if (!dir) fail('Indiquez le dossier de la sauvegarde : npm run db:restore -- backups/2026-11-19T08-00-00_manuelle');
+    const { restore } = await import('./lib/restore.mjs');
+    const r = await restore(db, dir.startsWith('/') ? dir : root + dir, MIGRATIONS, { log: (m) => console.log(m) });
+    console.log(`✔ Restauration terminée : ${r.tables} tables, ${r.rows} lignes (sauvegarde du ${new Date(r.created_at).toLocaleString('fr-FR')}, schéma ${r.upTo}).`);
+    console.log('  Étape suivante : npm run db:migrate (applique les migrations plus récentes que la sauvegarde).');
   } else if (command === 'demo') {
     const { setQueryRunner } = await import('../api/_lib/db.js');
     setQueryRunner((text, params) => client.query(text, params).then((r) => r.rows));
@@ -105,7 +113,7 @@ try {
     const { rows } = await client.query('select version()');
     console.log('✔ Connexion réussie : ' + rows[0].version.split(',')[0]);
   } else {
-    fail('Commande inconnue. Utilisez : migrate, status, backup, demo, admin ou check.');
+    fail('Commande inconnue. Utilisez : migrate, status, backup, restore, demo, admin ou check.');
   }
 } catch (err) {
   fail(err.message);

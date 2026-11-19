@@ -39,8 +39,11 @@ export async function migrationStatus(db, dir) {
  * si une instruction échoue, la base reste exactement dans l'état précédent.
  * @param {{ before?: (pending) => Promise<void>, log?: (msg: string) => void }} opts
  */
-export async function migrate(db, dir, { before, log = () => {} } = {}) {
-  const { pending, altered } = await migrationStatus(db, dir);
+export async function migrate(db, dir, { before, log = () => {}, upTo = null } = {}) {
+  const status = await migrationStatus(db, dir);
+  const { altered } = status;
+  // upTo : s'arrêter à une version (restauration d'une sauvegarde faite avec un schéma plus ancien).
+  const pending = upTo ? status.pending.filter((m) => m.version <= upTo) : status.pending;
   if (altered.length) {
     throw new Error(`Migration(s) modifiée(s) après application : ${altered.map((m) => m.file).join(', ')}. Annulez la modification et créez une nouvelle migration.`);
   }

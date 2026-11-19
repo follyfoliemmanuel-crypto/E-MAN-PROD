@@ -1,16 +1,15 @@
 // Serveur d'API local : fait tourner les fonctions du dossier /api directement
 // dans `npm run dev` (Vite), sans Vercel. En ligne, Vercel prend le relais avec
 // exactement les mêmes fichiers.
+import { readdirSync } from 'node:fs';
+
+// Une route par fichier de /api (comme Vercel) : une nouvelle API est servie
+// automatiquement en local, sans liste à tenir à jour.
+const API_DIR = new URL('../api/', import.meta.url);
 const ROUTES = [
-  [/^\/api\/orders\/?$/, '/api/orders.js'],
-  [/^\/api\/trainings\/?$/, '/api/trainings.js'],
-  [/^\/api\/media\/?$/, '/api/media.js'],
-  [/^\/api\/catalog\/?$/, '/api/catalog.js'],
-  [/^\/api\/manage\/?$/, '/api/manage.js'],
-  [/^\/api\/quotes\/?$/, '/api/quotes.js'],
-  [/^\/api\/account\/?$/, '/api/account.js'],
-  [/^\/api\/files\/?$/, '/api/files.js'],
-  [/^\/api\/inbox\/?$/, '/api/inbox.js'],
+  ...readdirSync(API_DIR)
+    .filter((f) => f.endsWith('.js') && !f.startsWith('_'))
+    .map((f) => [new RegExp(`^/api/${f.slice(0, -3)}/?$`), `/api/${f}`]),
   [/^\/api\/auth\/([a-z-]+)\/?$/, '/api/auth/[action].js', 'action'],
 ];
 

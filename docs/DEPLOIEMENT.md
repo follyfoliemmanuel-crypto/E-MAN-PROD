@@ -31,15 +31,15 @@ git push origin main       # dépôt privé recommandé
 **Sans installer Node : dans le navigateur.** Neon → projet → **SQL Editor** → branche `main` → coller tout le fichier [`db/install-neon.sql`](../db/install-neon.sql) → **Run**. Ce fichier contient les mêmes migrations et le même contenu de départ que `npm run db:migrate`, et les inscrit dans le même registre (`schema_migrations`). Les deux méthodes peuvent donc être utilisées l'une après l'autre.
 - Le fichier peut être relancé : ce qui est déjà en place est sauté, rien n'est supprimé ni écrasé.
 - Tout passe dans une seule transaction : en cas d'erreur, la base reste telle quelle.
-- La dernière requête affiche les migrations 001 à 006.
+- La dernière requête affiche les migrations 001 à 007.
 - Pour mettre à jour une base qui contient déjà des données, créer d'abord une branche Neon de secours.
 - Après chaque nouvelle migration, régénérer le fichier avec `npm run db:sql`.
 
-**Premier administrateur :** créer le compte sur le site (« Inscription »), puis exécuter dans le SQL Editor :
-```sql
-update users set role = 'admin' where lower(email) = lower('emanprod3@gmail.com');
-```
-(ou `npm run db:admin -- emanprod3@gmail.com`). Les autres membres de l'équipe sont ensuite invités depuis Espace → Équipe.
+**Premier administrateur :** Le compte **emanprod3@gmail.com** devient administrateur **automatiquement** (réglable par `ADMIN_EMAILS`), dès que l'adresse est prouvée :
+- connexion avec **Google** : immédiat ;
+- inscription par e-mail : au clic sur le lien de confirmation reçu (nécessite le fournisseur d'e-mails, Resend).
+
+Quelqu'un qui s'inscrirait avec cette adresse sans en avoir la boîte reste un simple client non confirmé ; et si le vrai propriétaire se connecte ensuite avec Google, le mot de passe posé par l'intrus est effacé. Aucun SQL n'est nécessaire. Les autres membres de l'équipe sont invités depuis Espace → Équipe (`npm run db:admin -- email` reste disponible).
 
 ## 3. Projet Vercel
 
@@ -58,14 +58,19 @@ Le build exécute `vite build` puis `scripts/prerender-meta.mjs`, qui écrit une
 1. Vercel → *Settings* → *Domains* → ajouter `www.emanprod.com` et `emanprod.com` (redirection de l'un vers l'autre, Vercel le propose).
 2. Chez le registraire du domaine, créer les enregistrements DNS indiqués par Vercel.
 3. Le certificat **HTTPS** est créé et renouvelé automatiquement par Vercel. HSTS (dans `vercel.json`) impose ensuite HTTPS aux navigateurs.
-4. Si le domaine réel n'est pas `www.emanprod.com`, mettre la bonne adresse dans `SITE_URL` et `VITE_SITE_URL`, et dans la console Google (origines et redirection), puis redéployer.
+4. Si le domaine réel n'est pas `www.emanprod.com`, mettre la bonne adresse dans `SITE_URL`, et dans la console Google (origines et redirection), puis redéployer.
 
 ## 5. Premier administrateur
 
-1. Sur le site en ligne : Espace client → *Créer un compte*.
-2. Depuis votre PC (chaîne de `main` dans `.env`) : `npm run db:admin -- votre@email.com`.
-3. Se déconnecter et se reconnecter : l'espace de gestion complet apparaît.
-4. Inviter les collaborateurs : Espace → Équipe → Inviter (voir [ROLES.md](ROLES.md)).
+1. Sur le site en ligne : **Connexion → Se connecter avec Google** avec emanprod3@gmail.com (ou Inscription par e-mail, puis clic sur le lien reçu).
+2. L'espace de gestion complet apparaît : le compte est administrateur.
+3. Inviter les collaborateurs : Espace → Équipe → Inviter (voir [ROLES.md](ROLES.md)).
+
+Le compte **emanprod3@gmail.com** devient administrateur **automatiquement** (réglable par `ADMIN_EMAILS`), dès que l'adresse est prouvée :
+- connexion avec **Google** : immédiat ;
+- inscription par e-mail : au clic sur le lien de confirmation reçu (nécessite le fournisseur d'e-mails, Resend).
+
+Quelqu'un qui s'inscrirait avec cette adresse sans en avoir la boîte reste un simple client non confirmé ; et si le vrai propriétaire se connecte ensuite avec Google, le mot de passe posé par l'intrus est effacé. Aucun SQL n'est nécessaire. Les autres membres de l'équipe sont invités depuis Espace → Équipe (`npm run db:admin -- email` reste disponible).
 
 ## 6. Réglages de l'entreprise (dans le site)
 

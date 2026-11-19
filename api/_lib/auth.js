@@ -121,7 +121,32 @@ const sessionToken = (req) => readCookie(req, cookieName(req)) || readCookie(req
 // --- Sessions ------------------------------------------------------------------------
 export const SESSION = { maxDays: 30, idleDays: 14, rotateHours: 24, graceSeconds: 60, perUser: 10 };
 
+/**
+ * Adresse(s) de l'administrateur propriétaire : ADMIN_EMAILS (séparées par des virgules),
+ * par défaut l'adresse professionnelle d'E-MAN PROD.
+ */
+export const ownerEmails = () => (process.env.ADMIN_EMAILS || 'emanprod3@gmail.com')
+  .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);
+
+/**
+ * Le compte d'E-MAN PROD devient administrateur à sa connexion, décidé par le serveur
+ * uniquement, et SEULEMENT si l'adresse est prouvée : confirmée par Google, par le lien de
+ * confirmation reçu par e-mail ou par une réinitialisation du mot de passe. Quelqu'un qui
+ * s'inscrit avec cette adresse sans en avoir la boîte reste un simple client non confirmé.
+ */
+export async function promoteOwner(req, userId) {
+  const owners = ownerEmails();
+  if (!owners.length) return;
+  const row = await one(
+    `update users set role = 'admin' where id = $1 and role <> 'admin' and email_verified_at is not null
+       and disabled_at is null and lower(email) = any($2::text[]) returning id, email`,
+    [userId, owners],
+  );
+  if (row) await logSecurity(req, 'auth.owner_promoted', { userId, role: 'admin', data: { email: maskEmail(row.email) } });
+}
+
 export async function createSession(req, res, userId, { method = 'password' } = {}) {
+  await promoteOwner(req, userId);
   const token = newToken();
   await query(
     `insert into sessions (token_hash, user_id, expires_at, user_agent, ip_hash, method)

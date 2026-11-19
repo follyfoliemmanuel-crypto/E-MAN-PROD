@@ -33,7 +33,8 @@ Sans base de données, pour voir le site : `npm run demo`. Détails et dépannag
 | `npm run db:status` / `db:check` | état des migrations / test de connexion |
 | `npm run db:backup` | sauvegarde JSON de toutes les tables |
 | `npm run db:restore -- backups/<dossier>` | restauration dans une base vide |
-| `npm run db:admin -- email` | nommer un administrateur |
+| `npm run check` | vérifier toute la configuration (et ce que voit le site en ligne) |
+| `npm run db:admin -- email` | nommer un administrateur (emanprod3@gmail.com l'est automatiquement) |
 | `npm run db:demo` (`-- --remove`) | données de démonstration (branche `dev` uniquement) |
 
 ## Documentation

@@ -52,7 +52,7 @@ function readLocation() {
 }
 
 export default function Dashboard() {
-  const { user, ready, openAuth, logout, notify, setUser, spaceRequest, unread, refreshUnread } = useApp();
+  const { user, ready, openAuth, logout, notify, setUser, spaceRequest, unread, refreshUnread, serverIssue } = useApp();
   const [loc, setLoc] = useState(() => (spaceRequest ? { section: spaceRequest.section, params: {} } : readLocation()));
   const [menuOpen, setMenuOpen] = useState(false);
   const [mainEl, setMainEl] = useState(null);
@@ -84,6 +84,7 @@ export default function Dashboard() {
         <header className="pageHead wrap">
           <h1 className="pageTitle">Espace client</h1>
           <p className="pageLead">Connectez-vous pour suivre vos devis, vos commandes, vos factures et vos inscriptions.</p>
+          {serverIssue && <p className="formError" role="alert">{serverIssue}</p>}
           <div className="authCtas">
             <button type="button" className="btn btnPrimary" onClick={() => openAuth('login')}>Se connecter</button>
             <button type="button" className="btn btnGhost" onClick={() => openAuth('signup')}>Créer un compte</button>

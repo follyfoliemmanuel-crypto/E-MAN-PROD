@@ -8,6 +8,13 @@ Les informations de l'entreprise (coordonnées, WhatsApp, mentions légales, con
 
 **Règle de sécurité** : seules les variables qui commencent par `VITE_` sont visibles du navigateur ; aucune ne doit contenir de secret. Toutes les autres restent sur le serveur. Ne jamais versionner `.env` (il est exclu par `.gitignore`).
 
+## 0. Vérifier la configuration en une commande
+
+- **En ligne** : ouvrez `https://<votre-site>/api/auth/status`. La page dit ce que le serveur Vercel voit vraiment (base, e-mails, Google, fichiers) et liste ce qui manque. Aucune valeur secrète n'y figure.
+- **Sur votre PC** : `npm run check`. Lit votre `.env`, teste réellement Neon, Resend, Google et Cloudinary, puis interroge le site en ligne et compare.
+
+**Le fichier `.env` n'est pas envoyé à Vercel.** En ligne, les variables se saisissent dans Vercel → *Settings → Environment Variables* (cochées pour *Production*, sans guillemets), puis **Redeploy**. Si le site « répond comme si rien n'était configuré », c'est presque toujours l'un de ces trois points ; `/api/auth/status` le montre.
+
 ## 1. Référence des variables
 
 | Variable | Obligatoire | Rôle | Exemple |
@@ -15,6 +22,7 @@ Les informations de l'entreprise (coordonnées, WhatsApp, mentions légales, con
 | `DATABASE_URL` | **oui** | Base PostgreSQL (Neon en ligne) | `postgresql://…neon.tech/neondb?sslmode=require` |
 | `SITE_URL` | **oui** en ligne | Adresse publique : liens des e-mails, retour Google, sitemap | `https://www.emanprod.com` |
 | `VITE_SITE_URL` | non | Ancien nom, encore accepté : `SITE_URL` suffit désormais (lue au build et par le serveur ; à défaut, l'adresse de production Vercel) | |
+| `ADMIN_EMAILS` | non | Adresse(s) administrateur, appliquées une fois l'adresse prouvée (défaut : emanprod3@gmail.com) | `emanprod3@gmail.com` |
 | `AUTH_SECRET` | conseillé | Chaîne aléatoire (32+ caractères) pour anonymiser les adresses IP du journal | `openssl rand -hex 32` |
 | `VITE_WHATSAPP_NUMBER` | conseillé | Numéro WhatsApp principal par défaut (sans +) | `22891388405` |
 | `VITE_CONTACT_EMAIL` | non | E-mail de contact par défaut | `emanprod3@gmail.com` |

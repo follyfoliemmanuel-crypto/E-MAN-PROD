@@ -28,10 +28,15 @@ async function call(path, { method = 'GET', body } = {}) {
   } catch {
     throw new Error('Connexion impossible. Vérifiez votre réseau, ou écrivez-nous sur WhatsApp.');
   }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const err = new Error(data.error || 'Le serveur ne répond pas. Réessayez dans un instant.');
+  // Une réponse qui n'est pas du JSON vient d'ailleurs que de l'API (page HTML, erreur de
+  // l'hébergeur) : on le dit, au lieu de faire comme si rien n'était configuré.
+  const isJson = (res.headers.get('content-type') || '').includes('application/json');
+  const data = isJson ? await res.json().catch(() => ({})) : {};
+  if (!res.ok || !isJson) {
+    const err = new Error(data.error || (isJson ? 'Le serveur ne répond pas. Réessayez dans un instant.'
+      : `Le serveur de l’application ne répond pas (${res.status}) : les fonctions /api ne tournent pas. En local, lancez « npm run dev » ; en ligne, vérifiez le déploiement Vercel.`));
     err.status = res.status;
+    err.data = data;
     throw err;
   }
   return data;

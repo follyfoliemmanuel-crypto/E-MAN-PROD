@@ -41,7 +41,7 @@ Le tableau de bord d'un STAFF n'affiche que les statistiques de ses domaines.
 
 ## Règles de gestion des comptes
 
-- **Premier administrateur** : créer son compte sur le site, puis `npm run db:admin -- email@exemple.com`.
+- **Premier administrateur** : automatique pour emanprod3@gmail.com (`ADMIN_EMAILS`) dès que l'adresse est prouvée (connexion Google ou lien de confirmation). Jamais décidé par le navigateur.
 - **Collaborateurs** : Espace → Équipe → Inviter. La personne reçoit un lien (72 h, usage unique) pour choisir son mot de passe ; sans e-mail configuré, le lien s'affiche pour être transmis par WhatsApp.
 - Retirer un droit ou désactiver un compte **ferme immédiatement** ses sessions.
 - Un compte désactivé ne peut plus se connecter ; ses données restent conservées.

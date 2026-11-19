@@ -63,6 +63,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
 
   const [methods, setMethods] = useState({ google: false, mail: false });
+  // Problème du serveur constaté au démarrage (API ou base injoignable), affiché tel quel.
+  const [serverIssue, setServerIssue] = useState('');
   // Rubrique de l'espace demandée depuis le menu du profil : { section, n }.
   const [spaceRequest, setSpaceRequest] = useState(null);
   // Notifications non lues : partagées entre l'en-tête (pastille du profil) et l'espace.
@@ -123,6 +125,9 @@ export default function App() {
           }
         }
       } catch (e) {
+        // Serveur ou base injoignable : message visible et gardé (fenêtre de connexion, espace).
+        if (e.data && 'google' in e.data) setMethods({ google: Boolean(e.data.google), mail: Boolean(e.data.mail) });
+        setServerIssue(e.message);
         notify(e.message, 'error');
       } finally {
         setReady(true);
@@ -138,6 +143,7 @@ export default function App() {
     setUser,
     ready,
     methods,
+    serverIssue,
     notify,
     unread,
     refreshUnread,
@@ -156,7 +162,7 @@ export default function App() {
       navigate('/');
       notify('Vous êtes déconnecté.');
     },
-  }), [user, ready, notify, methods, unread, refreshUnread, spaceRequest]);
+  }), [user, ready, notify, methods, serverIssue, unread, refreshUnread, spaceRequest]);
 
   const onAuthenticated = (u) => {
     setUser(u);
@@ -192,6 +198,7 @@ export default function App() {
                   initialMode={modal.mode}
                   notify={notify}
                   google={methods.google}
+                  serverIssue={serverIssue}
                   onDone={onAuthenticated}
                   startDemo={() => onAuthenticated(auth.demoUser())}
                 />

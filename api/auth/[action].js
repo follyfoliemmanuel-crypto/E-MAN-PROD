@@ -1,5 +1,6 @@
 // /api/auth/:action — comptes et connexion.
 //   GET  me                          utilisateur connecté (+ modes de connexion disponibles)
+//   GET  status                      état du serveur après configuration (public, sans aucun secret)
 //   GET  google                      démarrer la connexion avec Google
 //   GET  google-callback             retour de Google
 //   GET  sessions                    mes sessions ouvertes (appareils)
@@ -14,9 +15,11 @@ import { handler, send, readJson, clientIp, siteUrl, HttpError } from '../_lib/h
 import {
   hashPassword, verifyPassword, needsRehash, dummyVerify, checkPassword, createSession, destroySession, currentUser,
   requireUser, publicUser, rateLimit, sha256, logSecurity, maskEmail, issueToken,
+  promoteOwner,
 } from '../_lib/auth.js';
-import { googleConfigured, startGoogle, googleCallback } from '../_lib/google.js';
-import { sendMail, mailConfigured } from '../_lib/mail.js';
+import { googleConfigured, startGoogle, googleCallback, redirectUri } from '../_lib/google.js';
+import { sendMail, mailConfigured, mailStatus } from '../_lib/mail.js';
+import { SCHEMA_VERSION } from '../_lib/version.js';
 import { mySessions, revokeMine } from '../_lib/services/security.js';
 import * as v from '../_lib/validate.js';
 import { claimGuestRequests, announceClient } from '../_lib/services/clients.js';
@@ -59,7 +62,63 @@ const nameField = (value, label) => v.text(value, label, { min: 1, max: 60, requ
 
 const actions = {
   async me(req, res) {
-    send(res, 200, { user: publicUser(await currentUser(req)), mail: mailConfigured() || devMail(), google: googleConfigured() });
+    const methods = { mail: mailConfigured() || devMail(), google: googleConfigured() };
+    let user;
+    try {
+      user = await currentUser(req);
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      // Base injoignable : on le dit clairement au lieu de faire comme si rien n'était configuré.
+      console.error(JSON.stringify({ level: 'error', scope: 'database', message: String(err.message).replace(/postgres(ql)?:\/\/\S+/g, '[adresse]') }));
+      return send(res, 503, { error: 'Le serveur ne joint pas la base de données : vérifiez DATABASE_URL (voir /api/auth/status).', database: false, ...methods });
+    }
+    send(res, 200, { user: publicUser(user), ...methods });
+  },
+
+  /**
+   * Diagnostic après configuration : ce que le serveur EN LIGNE voit réellement (et non le
+   * fichier .env du poste). Booléens et noms de variables seulement, jamais une valeur.
+   */
+  async status(req, res) {
+    const env = process.env;
+    const out = { checked_at: new Date().toISOString(), environment: env.VERCEL_ENV || (env.VERCEL ? 'vercel' : 'local'), site_url: siteUrl(req) };
+    const fix = [];
+    // Base de données
+    {
+      try {
+        const rows = await query(`select max(version) as v, count(*)::int as n from schema_migrations`);
+        out.database = { ok: true, schema: rows[0]?.v || null, expected: SCHEMA_VERSION };
+        if ((rows[0]?.v || '') < SCHEMA_VERSION) fix.push(`Base pas à jour (${rows[0]?.v || 'vide'} au lieu de ${SCHEMA_VERSION}) : redéployez (mise à jour automatique) ou lancez db/install-neon.sql.`);
+      } catch (err) {
+        const m = String(err.message || '');
+        const empty = /schema_migrations/.test(m) && /does not exist|n'existe pas/.test(m);
+        out.database = { ok: empty, schema: empty ? null : undefined, expected: SCHEMA_VERSION };
+        fix.push(empty ? 'Base vide : redéployez (création automatique) ou lancez db/install-neon.sql dans Neon.'
+          : !env.DATABASE_URL ? 'DATABASE_URL absente du serveur.' : 'Connexion à la base impossible : vérifiez DATABASE_URL (chaîne Neon complète, avec ?sslmode=require).');
+      }
+    }
+    const missing = (names) => names.filter((k) => !env[k]);
+    // E-mails
+    const mail = mailStatus();
+    out.email = { ok: mail.configured, provider: mail.provider, from_domain: mail.from ? String(mail.from).replace(/.*@/, '').replace(/>.*/, '') : null };
+    if (!mail.configured) fix.push(`E-mails : ${[!mail.key && 'MAIL_API_KEY (ou RESEND_API_KEY)', !mail.from && 'MAIL_FROM', !mail.provider_valid && 'MAIL_PROVIDER (resend ou brevo)'].filter(Boolean).join(', ')} manquant(s).`);
+    else if (/@(gmail|yahoo|hotmail|outlook)\./i.test(mail.from || '')) fix.push('MAIL_FROM utilise une adresse Gmail/Yahoo/Outlook : Resend refuse ces expéditeurs. Utilisez une adresse de votre domaine vérifié (ex. notifications@emanprod.com).');
+    // Google
+    out.google = { ok: googleConfigured(), redirect_uri: googleConfigured() ? redirectUri(req) : null };
+    if (!out.google.ok) fix.push(`Google : ${missing(['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET']).join(', ')} manquant(s).`);
+    // Fichiers
+    const { storageStatus } = await import('../_lib/storage.js');
+    const st = storageStatus();
+    out.files = { ok: st.active === 'cloudinary' || (!env.VERCEL && st.active === 'local'), provider: st.active };
+    if (st.active !== 'cloudinary') fix.push(`Fichiers : ${st.cloudinary.missing.join(', ') || 'Cloudinary'} manquant(s)${env.VERCEL ? '' : ' (en local, dossier .uploads/ utilisé)'}.`);
+    if (env.VERCEL && !env.SITE_URL) fix.push('SITE_URL absente : l’adresse de production Vercel est utilisée pour les liens des e-mails et Google.');
+    // Variables mal nommées : une clé secrète préfixée VITE_ serait envoyée au navigateur.
+    const exposed = Object.keys(env).filter((k) => /^VITE_.*(SECRET|KEY|PASSWORD|DATABASE)/.test(k));
+    if (exposed.length) fix.push(`Attention : ${exposed.join(', ')} commence par VITE_ et serait visible dans le navigateur. Retirez le préfixe VITE_.`);
+    out.ok = Boolean(out.database?.ok && out.email.ok && out.google.ok && out.files.ok);
+    out.to_fix = fix;
+    out.reminder = 'Une variable ajoutée dans Vercel ne s’applique qu’après « Redeploy ».';
+    send(res, 200, out);
   },
 
   async signup(req, res) {
@@ -170,8 +229,11 @@ const actions = {
     const body = await readJson(req);
     await rateLimit(`verify:ip:${clientIp(req)}`, 20, 60);
     const userId = await consumeToken(body.token, 'verify');
-    const user = await one('update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1 returning *', [userId]);
+    await one('update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1 returning id', [userId]);
     await logSecurity(req, 'auth.email_verified', { userId });
+    // Adresse désormais prouvée : le compte d'E-MAN PROD devient administrateur.
+    await promoteOwner(req, userId);
+    const user = await one('select * from users where id = $1', [userId]);
     const claimed = await claimGuestRequests(user);
     send(res, 200, { user: publicUser(user), claimed });
   },
@@ -227,6 +289,7 @@ const actions = {
 
 const GET_ACTIONS = {
   me: actions.me,
+  status: actions.status,
   sessions: actions.sessions,
   google: startGoogle,
   'google-callback': (req, res) => googleCallback(req, res, { onLogin: async (id) => claimGuestRequests(await one('select * from users where id = $1', [id])) }),
@@ -241,7 +304,7 @@ export default handler({
   async POST(req, res) {
     const name = actionOf(req);
     const fn = actions[name];
-    if (!fn || name === 'me' || name === 'sessions') throw new HttpError(404, 'Action inconnue.');
+    if (!fn || name === 'me' || name === 'sessions' || name === 'status') throw new HttpError(404, 'Action inconnue.');
     return fn(req, res);
   },
 });

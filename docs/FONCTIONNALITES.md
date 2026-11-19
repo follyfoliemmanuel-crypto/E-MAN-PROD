@@ -121,7 +121,7 @@ Tables techniques : `counters` (numérotation), `schema_migrations`, `rate_event
 - Un admin ne peut pas changer son propre rôle.
 - Pour rejoindre l'équipe, un compte doit avoir confirmé son adresse e-mail.
 - Retirer un droit ferme les sessions de la personne.
-- Nommer le premier administrateur : `npm run db:admin -- email`. Les suivants se nomment depuis la section **Équipe**.
+- Premier administrateur : emanprod3@gmail.com, automatiquement une fois l'adresse prouvée (Google ou lien de confirmation). Les suivants se nomment depuis la section **Équipe**.
 
 **Protections.**
 - Validation de toutes les entrées (Zod) et requêtes SQL paramétrées.

@@ -1,5 +1,11 @@
 # Historique des versions et des vérifications
 
+## v3.2.2 — diagnostic de configuration, administrateur automatique, inscription Google d'abord
+- **`/api/auth/status`** (en ligne) et **`npm run check`** (sur le poste) : disent précisément ce qui est configuré, ce qui manque et pourquoi le site « ne voit pas » une variable (fichier `.env` non envoyé à Vercel, pas de redéploiement, valeur mal saisie).
+- **Plus de panne silencieuse** : si l'API ou la base ne répond pas, le site l'affiche (fenêtre de connexion, espace) au lieu de se comporter comme si rien n'était configuré.
+- **emanprod3@gmail.com administrateur automatiquement**, seulement une fois l'adresse prouvée (Google ou lien de confirmation) ; jamais par le navigateur.
+- **Inscription** : « S'inscrire avec Google » en premier (recommandé), inscription par e-mail toujours possible ; connexion par e-mail et mot de passe inchangée ; e-mails de confirmation et de mot de passe oublié par Resend.
+
 ## v3.2.1 — plus rien à faire à la main après la configuration
 - **Base mise à jour automatiquement** à chaque déploiement de production (migrations + contenu de départ) : plus de SQL à lancer.
 - **Réglages admin appliqués aussitôt** : contenu public et photos du site jamais gardés en cache par le CDN.

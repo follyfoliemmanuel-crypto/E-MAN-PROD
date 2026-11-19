@@ -249,8 +249,10 @@ function GoogleButton({ mode, available, onDemo }) {
   );
 }
 
-export function AuthForm({ onDone, notify, startDemo, google = false, initialMode = 'login' }) {
+export function AuthForm({ onDone, notify, startDemo, google = false, initialMode = 'login', serverIssue = '' }) {
   const [mode, setMode] = useState(initialMode === 'signup' ? 'signup' : 'login');
+  // Inscription : Google d'abord (un clic, adresse déjà vérifiée) ; l'e-mail reste possible.
+  const [emailSignup, setEmailSignup] = useState(!google);
   const [f, set] = useForm({ first_name: '', last_name: '', phone: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -299,14 +301,19 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
         </div>
       )}
       <h2 className="formTitle">{titles[mode]}</h2>
+      {serverIssue && !DEMO && <p className="formError" role="alert">{serverIssue}</p>}
       {DEMO && <p className="formInfo">Mode démonstration : les comptes seront actifs une fois la base de données branchée. Chaque bouton ouvre un tableau de bord rempli de données fictives.</p>}
       {mode === 'signup' && <p className="muted formIntro">Suivez vos devis, commandes, factures et inscriptions aux formations. Utilisez l’adresse e-mail de vos demandes : elles apparaîtront dans votre espace.</p>}
       {mode !== 'forgot' && (
         <>
           <GoogleButton mode={mode} available={google} onDemo={startDemo} />
-          <p className="orLine"><span>ou avec votre e-mail</span></p>
+          {mode === 'signup' && google && <p className="hint googleSoon">Recommandé : en un clic, sans mot de passe à retenir.</p>}
+          {mode === 'signup' && !emailSignup ? (
+            <button type="button" className="btn btnGhost btnBlock" onClick={() => setEmailSignup(true)}>Créer un compte avec mon e-mail</button>
+          ) : <p className="orLine"><span>ou avec votre e-mail</span></p>}
         </>
       )}
+      {mode === 'signup' && !emailSignup ? null : <>
       {mode === 'signup' && (
         <>
           <div className="fieldRow">
@@ -325,6 +332,7 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
       <ErrorLine error={error} />
       {info && <p className="formInfo" role="status">{info}</p>}
       <Submit busy={busy}>{mode === 'login' ? 'Se connecter' : mode === 'signup' ? 'Créer mon compte' : 'Recevoir le lien'}</Submit>
+      </>}
       <div className="authSwitch">
         {mode === 'login' && <button type="button" className="linkBtn" onClick={() => switchTo('forgot')}>Mot de passe oublié</button>}
         {mode === 'forgot' && <button type="button" className="linkBtn" onClick={() => switchTo('login')}>Retour à la connexion</button>}

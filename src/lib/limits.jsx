@@ -16,5 +16,5 @@ export function useFileLimit(purpose) {
 /** « JPG, PNG… , 10 Mo maximum par fichier » ; sans la taille tant qu'elle n'est pas connue. */
 export function LimitHint({ purpose, formats, per = '', after = '' }) {
   const max = useFileLimit(purpose);
-  return <span className="hint">{formats}{max ? `, ${formatMb(max)} maximum${per}` : ''}{after}.</span>;
+  return <span className="hint">{formats}{max ? `, ${formatMb(max)} maximum${per} (au-delà, compressé automatiquement jusqu’à 50 Mo)` : ''}{after}.</span>;
 }

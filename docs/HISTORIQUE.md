@@ -1,5 +1,13 @@
 # Historique des versions et des vérifications
 
+## v3.4.0 — compression automatique des fichiers avant l'envoi
+- **Dans le navigateur, avant Cloudinary**, sans rien installer (`src/lib/compress.js`) :
+  - fichier sous la limite : envoyé tel quel, identique à l'octet près (fichiers d'impression) ;
+  - photo trop lourde (devis, commandes, messages) : réenregistrée en haute qualité (jusqu'à 6 000 px, 92 %) ;
+  - autre fichier trop lourd (PSD, EPS, AI, PDF…) : mis dans une archive .zip **sans perte** — l'atelier retrouve le fichier d'origine intact en l'ouvrant ;
+  - fichiers choisis jusqu'à 50 Mo ; si même compressé le fichier dépasse la limite, message clair (WhatsApp, lien de partage).
+- Le message de confirmation indique la compression (« compressé de 20,0 Mo à 0,7 Mo »).
+
 ## v3.3.1 — photos jusqu'à 50 Mo, photo de profil toujours affichée
 - **Photos jusqu'à 50 Mo** (réalisations, images du site, photo de profil) : réduites dans le navigateur avant l'envoi (2 560 px pour le site, 800 px pour le profil, orientation des téléphones respectée), pour tenir dans la limite de 10 Mo par image de l'offre gratuite de Cloudinary. Au-delà de 50 Mo : message clair.
 - **Photo de profil** : avant, une photo de téléphone (souvent 3 à 8 Mo) était refusée par la limite de 2 Mo. Elle est maintenant allégée automatiquement. Si Cloudinary refuse l'adresse optimisée, la photo d'origine est affichée par un lien temporaire ; en dernier recours, les initiales.

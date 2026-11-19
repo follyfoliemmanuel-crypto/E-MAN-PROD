@@ -138,7 +138,8 @@ La configuration de Google est décrite dans [CONFIGURATION.md](CONFIGURATION.md
 
 Les clients connectés joignent des fichiers à leurs devis, commandes et messages ; l'équipe ajoute les photos des réalisations, les supports de formation et les documents des inscrits. Formats acceptés :
 - pièces jointes : JPG, PNG, WebP, PDF, AI, EPS, PSD, CDR (CorelDRAW), ZIP, Word, Excel, PowerPoint, **10 Mo maximum** (limite de l'offre gratuite de Cloudinary, réglable par `CLOUDINARY_MAX_FILE_MB`) ; au-delà, le site oriente vers WhatsApp ;
-- photos de réalisations : JPG, PNG ou WebP, 5 Mo maximum ; photos de profil : 2 Mo.
+- photos de réalisations et du site : jusqu'à 50 Mo choisis, allégées automatiquement (2 560 px) ; photos de profil : allégées à 800 px.
+- **Compression automatique** : un fichier trop lourd est compressé dans le navigateur avant l'envoi (photo réenregistrée en haute qualité ; autre fichier mis en .zip sans perte). Un fichier sous la limite part intact.
 
 Contrôles :
 1. Avant l'envoi : droits, extension, type MIME annoncé et taille.

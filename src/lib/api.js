@@ -2,6 +2,7 @@
 // VITE_DEMO=1 active un mode démonstration sans serveur (données locales),
 // utile pour présenter le site avant le branchement de la base.
 import { prepareImage, shrinksImages } from './images.js';
+import { compressForUpload } from './compress.js';
 import { PRESTATIONS as SEED_PRESTATIONS, POLES as SEED_POLES, COURSES as SEED_COURSES, CONTENT as SEED_CONTENT } from '../content/seed.js';
 
 export const DEMO = import.meta.env.VITE_DEMO === '1';
@@ -230,11 +231,11 @@ export async function markNotificationsRead(ids) {
 export async function uploadFile(purpose, targetId, original) {
   if (DEMO) throw new Error('L’envoi de fichiers n’est pas disponible en démonstration.');
   // Photos du site et de profil : réduites dans le navigateur si besoin (jusqu'à 50 Mo choisis).
+  // Pièces jointes : compressées seulement si elles dépassent la limite (src/lib/compress.js).
   let file = original;
-  if (shrinksImages(purpose)) {
-    const limits = await fileLimits();
-    file = await prepareImage(original, purpose, limits[purpose]?.max_bytes || 2 * 1048576);
-  }
+  const limits = await fileLimits();
+  if (shrinksImages(purpose)) file = await prepareImage(original, purpose, limits[purpose]?.max_bytes || 2 * 1048576);
+  else file = await compressForUpload(original, limits[purpose]);
   const { file_id: id, upload } = await call('/api/files', { method: 'POST', body: { purpose, target_id: targetId, filename: file.name, mime_type: file.type, size: file.size } });
   let res;
   try {

@@ -407,8 +407,11 @@ function Files({ list, purpose, targetId, canAdd, notify, onAdded }) {
             if (!file) return;
             setBusy(true);
             try {
-              await uploadFile(purpose, targetId, file);
-              notify(`Fichier ajouté : ${file.name}.`);
+              const sent = await uploadFile(purpose, targetId, file);
+              const name = sent?.original_name || file.name;
+              notify(name !== file.name || (sent?.size_bytes && sent.size_bytes < file.size)
+                ? `Fichier ajouté : ${name} (compressé de ${size(file.size)} à ${size(sent.size_bytes)}).`
+                : `Fichier ajouté : ${name}.`);
               onAdded();
             } catch (err) {
               notify(err.message, 'error');

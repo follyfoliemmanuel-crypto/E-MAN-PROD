@@ -1,5 +1,9 @@
 # Historique des versions et des vérifications
 
+## v3.4.2 — Bandeau du haut d'un bord à l'autre
+
+- Le bandeau (adresse, e-mail, WhatsApp, E-MAN CARS) entre par le bord droit, traverse toute la largeur, sort complètement par le bord gauche puis recommence. Vitesse constante d'environ 60 px/s quelle que soit la taille de l'écran.
+
 ## v3.4.1 — Défilement automatique partout
 
 - Bandeau du haut (adresse du siège et de l'annexe, e-mail, WhatsApp, E-MAN CARS) : défile tout seul en continu, en boucle, les liens restent cliquables.

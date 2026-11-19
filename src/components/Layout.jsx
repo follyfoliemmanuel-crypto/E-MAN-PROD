@@ -12,18 +12,36 @@ import { useCatalog } from '../lib/catalog.jsx';
  * d'écran) pour une boucle sans à-coup.
  */
 function TopBar() {
-  const group = (copy) => (
-    <div className="topTickerGroup" aria-hidden={copy || undefined} inert={copy ? '' : undefined}>
-      <span className="topBarPlace"><MapPin size={14} aria-hidden="true" />{BUSINESS.sites.map((s) => `${s.role} : ${s.name}`).join('  ·  ')}</span>
-      <a href={`mailto:${BUSINESS.email}`} tabIndex={copy ? -1 : undefined}>{BUSINESS.email}</a>
-      <a href={whatsappLink(undefined, 'contact')} target="_blank" rel="noreferrer" tabIndex={copy ? -1 : undefined}>WhatsApp {BUSINESS.phoneDisplay}</a>
-      <Link to="/e-man-cars" className="carsLink" tabIndex={copy ? -1 : undefined}>E-MAN CARS</Link>
-    </div>
-  );
+  // Une seule ligne qui part du bord droit et va jusqu'au bord gauche, à vitesse constante (≈ 60 px/s).
+  const box = useRef(null);
+  const track = useRef(null);
+  useEffect(() => {
+    const el = box.current; const tr = track.current;
+    if (!el || !tr) return undefined;
+    const fit = () => {
+      const from = el.clientWidth; const len = tr.scrollWidth;
+      if (!from || !len) return;
+      tr.style.setProperty('--ticker-from', `${from}px`);
+      tr.style.setProperty('--ticker-to', `${-(len + 24)}px`);
+      tr.style.setProperty('--ticker-duration', `${Math.max(12, (from + len + 24) / 60).toFixed(1)}s`);
+    };
+    fit();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(fit) : null;
+    ro?.observe(el); ro?.observe(tr);
+    document.fonts?.ready?.then(fit).catch(() => {});
+    return () => ro?.disconnect();
+  }, []);
   return (
     <div className="topBar">
-      <nav className="topTicker" aria-label="Coordonnées et liens rapides">
-        <div className="topTickerTrack">{group(false)}{group(true)}</div>
+      <nav className="topTicker" aria-label="Coordonnées et liens rapides" ref={box}>
+        <div className="topTickerTrack" ref={track}>
+          <div className="topTickerGroup">
+            <span className="topBarPlace"><MapPin size={14} aria-hidden="true" />{BUSINESS.sites.map((s) => `${s.role} : ${s.name}`).join('  ·  ')}</span>
+            <a href={`mailto:${BUSINESS.email}`}>{BUSINESS.email}</a>
+            <a href={whatsappLink(undefined, 'contact')} target="_blank" rel="noreferrer">WhatsApp {BUSINESS.phoneDisplay}</a>
+            <Link to="/e-man-cars" className="carsLink">E-MAN CARS</Link>
+          </div>
+        </div>
       </nav>
     </div>
   );

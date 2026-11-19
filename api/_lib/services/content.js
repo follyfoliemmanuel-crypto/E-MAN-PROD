@@ -3,7 +3,8 @@
 import { query, one } from '../db.js';
 import { HttpError } from '../http.js';
 import { logActivity, notifyTeam } from '../activity.js';
-import { storage } from '../storage.js';
+import { providerOf, logStorageError } from '../storage.js';
+import { publicImageUrl } from './files.js';
 
 /** Mise à jour partielle : seules les colonnes de la liste blanche peuvent être écrites. */
 async function updateRow(table, keyCol, key, patch, columns, notFound) {
@@ -197,11 +198,15 @@ export async function updatePortfolioItem(actor, id, patch) {
 }
 
 export async function deletePortfolioItem(actor, id) {
-  const files = await query('select id, storage_key from uploaded_files where portfolio_item_id = $1', [id]);
+  const files = await query('select id, purpose, storage_key, driver, resource_type, remote_type, remote_version, remote_format, visibility, mime_type from uploaded_files where portfolio_item_id = $1', [id]);
   if (files.length) {
-    const store = storage();
     for (const f of files) {
-      await store.remove(f.storage_key);
+      try {
+        await providerOf(f).remove(f);
+      } catch (err) {
+        logStorageError('delete', f, err);
+        throw new HttpError(502, 'Le stockage des images ne répond pas : la réalisation n’a pas été supprimée. Réessayez dans un instant.');
+      }
       await query('delete from uploaded_files where id = $1 returning id', [f.id]);
     }
   }
@@ -216,7 +221,7 @@ export async function setPortfolioImage(actor, id, fileId) {
   if (!f || f.status !== 'ready' || f.purpose !== 'portfolio') throw new HttpError(400, 'Image introuvable ou pas encore vérifiée.');
   const row = await one(
     `update portfolio_items set image_file_id = $2, image_url = $3 where id = $1 returning id`,
-    [id, fileId, `/api/files?id=${fileId}&inline=1`],
+    [id, fileId, await publicImageUrl(fileId)],
   );
   if (!row) throw new HttpError(404, 'Réalisation introuvable.');
   await query('update uploaded_files set portfolio_item_id = $1 where id = $2 returning id', [id, fileId]);

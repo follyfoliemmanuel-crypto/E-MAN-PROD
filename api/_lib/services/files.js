@@ -1,17 +1,19 @@
 // Fichiers envoyés : formats, tailles, types MIME, contenu réel et droits d'accès.
 //
-// Envoi en 3 temps :
-//   1. POST /api/files            → le serveur vérifie le droit et le format annoncé,
-//                                   puis renvoie une adresse d'envoi signée (10 min) ;
-//   2. le navigateur envoie le fichier à cette adresse ;
-//   3. POST /api/files {confirm}  → le serveur relit la taille et les premiers octets du
-//                                   fichier stocké : s'ils ne correspondent pas au format
-//                                   annoncé, le fichier est refusé et effacé.
+// Envoi en 3 temps, sans que le fichier passe par Vercel :
+//   1. POST /api/files            → le serveur vérifie le droit, le format et la taille, puis
+//                                   renvoie une autorisation d'envoi signée (Cloudinary) ;
+//   2. le navigateur envoie le fichier directement à Cloudinary ;
+//   3. POST /api/files {confirm}  → le serveur relit chez Cloudinary ce qui a été reçu (taille,
+//                                   format décodé ou premiers octets) : en cas d'écart, le
+//                                   fichier est effacé et la ligne refusée.
+// Lecture et suppression : chez le fournisseur indiqué dans la ligne (driver), ce qui garde
+// lisibles les anciens fichiers (S3, local) jusqu'à leur migration vérifiée.
 import { randomUUID } from 'node:crypto';
 import { query, one } from '../db.js';
 import { HttpError } from '../http.js';
 import { logActivity, isTeam } from '../activity.js';
-import { storage } from '../storage.js';
+import { providerFor, providerOf, logStorageError, storageStatus } from '../storage.js';
 
 const MB = 1024 * 1024;
 
@@ -57,6 +59,32 @@ const TARGET_COLUMN = { quote: 'quote_id', order: 'order_id', message: 'message_
 
 const FILE_COLS = `f.id, f.purpose, f.original_name, f.mime_type, f.size_bytes::float8 as size_bytes, f.visibility, f.status,
   f.owner_id, f.quote_id, f.order_id, f.message_id, f.portfolio_item_id, f.enrollment_id, f.session_id, f.created_at, f.confirmed_at`;
+const STORE_COLS = 'f.storage_key, f.driver, f.resource_type, f.remote_type, f.remote_version, f.remote_format';
+
+/** Appel au fournisseur : erreur journalisée (sans secret), message clair pour la personne. */
+async function guarded(op, row, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof HttpError) throw err;
+    logStorageError(op, row, err);
+    throw new HttpError(502, 'Le stockage des fichiers ne répond pas. Réessayez dans un instant.');
+  }
+}
+
+/**
+ * Taille maximale réelle d'un usage : la règle métier, plafonnée par la limite du compte
+ * Cloudinary (10 Mo par fichier sur l'offre gratuite, réglable par CLOUDINARY_MAX_FILE_MB).
+ */
+export function maxBytesFor(purpose, env = process.env) {
+  const account = storageStatus(env).max_bytes;
+  return account ? Math.min(PURPOSES[purpose].maxBytes, account) : PURPOSES[purpose].maxBytes;
+}
+
+/** Limites affichées dans les formulaires (information publique). */
+export function uploadLimits(env = process.env) {
+  return Object.fromEntries(Object.keys(PURPOSES).map((p) => [p, { max_bytes: maxBytesFor(p, env), formats: PURPOSES[p].formats }]));
+}
 
 /** Nom de fichier affiché : sans chemin ni caractères de contrôle. Jamais utilisé dans le stockage. */
 export function cleanName(name) {
@@ -115,25 +143,30 @@ export async function createUpload(actor, { purpose, target_id: targetId = null,
   const name = cleanName(filename);
   const format = formatFor(purpose, name, declaredMime);
   if (!Number.isInteger(size) || size <= 0) throw new HttpError(400, 'Taille du fichier invalide.');
-  if (size > rules.maxBytes) throw new HttpError(413, `Fichier trop volumineux : ${Math.round(rules.maxBytes / MB)} Mo maximum.`);
+  const max = maxBytesFor(purpose);
+  if (size > max) {
+    throw new HttpError(413, `Fichier trop volumineux : ${Math.round((max / MB) * 10) / 10} Mo maximum${max < rules.maxBytes ? '. Pour un fichier plus lourd, envoyez-le-nous sur WhatsApp' : ''}.`);
+  }
   await assertCanAttach(actor, purpose, targetId);
   const column = TARGET_COLUMN[purpose];
   if (rules.perTarget && column) {
     const [{ n }] = await query(`select count(*)::int as n from uploaded_files where ${column} = $1 and status <> 'rejected'`, [targetId]);
     if (n >= rules.perTarget) throw new HttpError(409, `${rules.perTarget} fichier(s) maximum ici. Supprimez-en un pour en ajouter un autre.`);
   }
-  const store = storage();
+  const store = providerFor();
   const now = new Date();
   const id = randomUUID();
   const prefix = rules.visibility === 'public' ? 'public/' : '';
   // La clé de stockage ne reprend jamais le nom choisi par la personne.
-  const key = `${prefix}${purpose}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}.${format.ext}`;
+  const ext = format.key === 'jpg' ? 'jpg' : format.ext;
+  const key = `${prefix}${purpose}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}.${ext}`;
+  const prepared = store.prepareUpload({ key, ext: format.key, contentType: format.mime, size, visibility: rules.visibility });
   await query(
-    `insert into uploaded_files (id, owner_id, purpose, driver, storage_key, original_name, mime_type, size_bytes, visibility, ${column || 'quote_id'})
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
-    [id, actor.id, purpose, store.name, key, name, format.mime, size, rules.visibility, column ? targetId : null],
+    `insert into uploaded_files (id, owner_id, purpose, driver, storage_key, resource_type, remote_type, original_name, mime_type, size_bytes, visibility, ${column || 'quote_id'})
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
+    [id, actor.id, purpose, store.name, prepared.storage_key, prepared.resource_type || null, prepared.remote_type || null, name, format.mime, size, rules.visibility, column ? targetId : null],
   );
-  return { file_id: id, upload: store.uploadTarget(key, { contentType: format.mime, size }) };
+  return { file_id: id, max_bytes: max, upload: prepared.upload };
 }
 
 /** L'équipe qui gère la ressource à laquelle le fichier est rattaché. */
@@ -150,7 +183,7 @@ async function teamOf(actor, f) {
 }
 
 async function loadFile(id) {
-  const f = await one(`select ${FILE_COLS}, f.storage_key, f.driver from uploaded_files f where f.id = $1`, [id]);
+  const f = await one(`select ${FILE_COLS}, ${STORE_COLS} from uploaded_files f where f.id = $1`, [id]);
   if (!f) throw new HttpError(404, 'Fichier introuvable.');
   return f;
 }
@@ -161,22 +194,30 @@ export async function confirmUpload(actor, id) {
   if (!(await teamOf(actor, f)) && f.owner_id !== actor?.id) throw new HttpError(404, 'Fichier introuvable.');
   if (f.status === 'ready') return publicFile(f);
   if (f.status === 'rejected') throw new HttpError(409, 'Ce fichier a été refusé.');
-  const store = storage();
-  const stat = await store.head(f.storage_key);
+  const store = providerOf(f);
+  const stat = await guarded('confirm', f, () => store.inspect(f, 64));
   if (!stat) throw new HttpError(409, 'Le fichier n’a pas encore été reçu par le stockage. Réessayez l’envoi.');
-  const key = Object.keys(FORMATS).find((k) => FORMATS[k].mime === f.mime_type && FORMATS[k].ext.includes(f.storage_key.split('.').pop()));
-  const head = await store.readStart(f.storage_key, 64);
-  const problem =
-    stat.size !== f.size_bytes ? 'la taille reçue ne correspond pas'
-      : !FORMATS[key]?.check(head) ? `son contenu n’est pas un vrai fichier .${f.storage_key.split('.').pop()}`
-        : null;
+  const ext = f.storage_key.split('.').pop();
+  const key = Object.keys(FORMATS).find((k) => FORMATS[k].mime === f.mime_type && (f.resource_type === 'image' || FORMATS[k].ext.includes(ext)));
+  let problem = stat.size !== f.size_bytes ? 'la taille reçue ne correspond pas' : null;
+  if (!problem && store.kind === 'cloudinary') {
+    if (stat.resourceType !== f.resource_type || stat.type !== f.remote_type) problem = 'il n’a pas été enregistré comme prévu';
+    // Image : Cloudinary l'a décodée, son vrai format doit être celui annoncé.
+    else if (f.resource_type === 'image' && stat.format !== key) problem = 'son contenu ne correspond pas au format annoncé';
+  }
+  // Fichier brut (et anciens stockages) : signature réelle des premiers octets.
+  if (!problem && f.resource_type !== 'image' && !FORMATS[key]?.check(stat.head)) problem = `son contenu n’est pas un vrai fichier .${ext}`;
   if (problem) {
-    await store.remove(f.storage_key);
+    await store.remove(f).catch((err) => logStorageError('reject', f, err));
     await query(`update uploaded_files set status = 'rejected' where id = $1 returning id`, [id]);
     await logActivity(actor, 'file.rejected', 'file', id, { reason: problem, name: f.original_name });
     throw new HttpError(422, `Fichier refusé : ${problem}.`);
   }
-  const row = await one(`update uploaded_files f set status = 'ready', confirmed_at = now() where id = $1 returning ${FILE_COLS}`, [id]);
+  if (store.kind === 'cloudinary') {
+    await query('update uploaded_files set remote_version = $2, remote_format = $3, width = $4, height = $5 where id = $1 returning id',
+      [id, stat.version, f.resource_type === 'image' ? stat.format : null, stat.width, stat.height]);
+  }
+  const row = await one(`update uploaded_files f set status = 'ready', confirmed_at = now(), verified_at = now() where id = $1 returning ${FILE_COLS}`, [id]);
   const target = f.quote_id ? ['quote', f.quote_id] : f.order_id ? ['order', f.order_id] : ['file', id];
   await logActivity(actor, 'file.uploaded', target[0], target[1], { file_id: id, name: f.original_name, size: f.size_bytes });
   return publicFile(row);
@@ -215,7 +256,17 @@ export async function downloadUrl(actor, id, { inline = false } = {}) {
   if (f.status !== 'ready') throw new HttpError(409, 'Ce fichier n’est pas encore disponible.');
   // Seules les images s'affichent dans le navigateur ; le reste est toujours téléchargé.
   const show = inline && f.mime_type.startsWith('image/');
-  return storage().downloadUrl(f.storage_key, { filename: f.original_name, inline: show, contentType: f.mime_type });
+  return guarded('download', f, async () => providerOf(f).downloadUrl(f, { filename: f.original_name, inline: show, variant: f.purpose === 'avatar' ? 'avatar' : 'gallery' }));
+}
+
+/**
+ * Adresse durable d'une image publique (réalisation) : CDN Cloudinary (format et compression
+ * automatiques) ; pour un ancien fichier, le lien contrôlé /api/files.
+ */
+export async function publicImageUrl(id) {
+  const f = await loadFile(id);
+  const store = providerOf(f);
+  return store.publicUrl && f.visibility === 'public' ? store.publicUrl(f) : `/api/files?id=${id}&inline=1`;
 }
 
 export async function deleteFile(actor, id) {
@@ -223,7 +274,9 @@ export async function deleteFile(actor, id) {
   const team = await teamOf(actor, f);
   if (!team && f.owner_id !== actor?.id) throw new HttpError(404, 'Fichier introuvable.');
   if (!team && f.order_id) throw new HttpError(409, 'Les fichiers d’une commande ne peuvent être retirés que par l’atelier.');
-  await storage().remove(f.storage_key);
+  // Le fichier distant d'abord : si le fournisseur ne répond pas, la ligne est conservée
+  // (aucune référence perdue) et la suppression peut être relancée.
+  await guarded('delete', f, () => providerOf(f).remove(f));
   await query('delete from uploaded_files where id = $1 returning id', [id]);
   const target = f.quote_id ? ['quote', f.quote_id] : f.order_id ? ['order', f.order_id] : ['file', id];
   await logActivity(actor, 'file.deleted', target[0], target[1], { file_id: id, name: f.original_name });
@@ -243,13 +296,20 @@ export async function filesOf(type, id) {
 
 /** Efface les envois jamais terminés (plus de 24 h). */
 export async function cleanupPending(actor) {
-  const rows = await query(`select id, storage_key from uploaded_files where status in ('pending','rejected') and created_at < now() - interval '24 hours'`);
-  if (!rows.length) return { removed: 0 };
-  const store = storage();
+  const rows = await query(`select f.id, f.purpose, f.visibility, f.mime_type, ${STORE_COLS} from uploaded_files f where f.status in ('pending','rejected') and f.created_at < now() - interval '24 hours'`);
+  if (!rows.length) return { removed: 0, kept: 0 };
+  let removed = 0;
   for (const r of rows) {
-    await store.remove(r.storage_key).catch(() => {});
+    try {
+      await providerOf(r).remove(r);
+    } catch (err) {
+      // Fournisseur injoignable : la ligne est gardée pour le prochain nettoyage.
+      logStorageError('cleanup', r, err);
+      continue;
+    }
     await query('delete from uploaded_files where id = $1 returning id', [r.id]);
+    removed += 1;
   }
-  await logActivity(actor, 'file.cleanup', 'file', 'pending', { removed: rows.length });
-  return { removed: rows.length };
+  await logActivity(actor, 'file.cleanup', 'file', 'pending', { removed, kept: rows.length - removed });
+  return { removed, kept: rows.length - removed };
 }

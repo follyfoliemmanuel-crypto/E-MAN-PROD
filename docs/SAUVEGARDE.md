@@ -5,7 +5,7 @@ Deux protections complémentaires :
 1. **Neon** (la base en ligne) : copies instantanées et retour à un instant passé. C'est la méthode à privilégier pour revenir en arrière.
 2. **Sauvegardes JSON** du projet (`npm run db:backup`) : une copie lisible de toutes les données, à conserver hors de Neon, et restaurable avec `npm run db:restore`.
 
-Les fichiers joints (photos, PDF envoyés par les clients) sont dans le stockage S3/R2, pas dans la base : voir la dernière section.
+Les fichiers (photos, PDF envoyés par les clients) sont chez Cloudinary, pas dans la base, et Cloudinary n'est pas une sauvegarde : voir la section 4 (`npm run backup`).
 
 ## 1. Avec Neon (recommandé pour revenir en arrière)
 
@@ -50,11 +50,42 @@ La restauration se fait **uniquement dans une base vide** : elle refuse une base
 
 **Testé (phase 8)** : sauvegarde de 43 627 lignes (34 tables), restauration dans une base vide en 8 s, puis comparaison ligne à ligne (empreinte md5) : les 33 tables de données sont identiques. Refus confirmé sur une base non vide.
 
-## 4. Fichiers joints (S3 / Cloudflare R2)
+## 4. Fichiers (Cloudinary) : sauvegarde indépendante
 
-La base ne contient que la référence des fichiers. Pour les fichiers eux-mêmes, quel que soit le fournisseur, faites une copie périodique du seau vers un second seau ou un disque, avec un outil compatible S3 comme rclone (`rclone sync r2:emanprod-fichiers sauvegarde:emanprod-fichiers`). Créez pour cela un jeton en lecture seule limité à ce seau. Sur AWS S3 et Backblaze B2, le versionnage du seau peut aussi être activé.
+**Cloudinary n'est pas une sauvegarde** : une suppression, une erreur de manipulation ou la perte du compte emporterait les fichiers. La sauvegarde copie la base et les fichiers sur un support d'E-MAN PROD, hors de Cloudinary et de Neon (disque externe, NAS, dossier synchronisé).
 
-Après une restauration de la base sur un autre environnement, utilisez le même seau (mêmes variables `S3_*`) pour que les liens restent valides.
+**Lancer une sauvegarde** (depuis le dossier du projet, `.env` rempli avec `DATABASE_URL` et `CLOUDINARY_*`) :
+```
+npm run backup -- --dossier "E:\Sauvegardes\emanprod"
+```
+- `base/<date>/` : un fichier JSON par table + `manifest.json` (restaurable par `npm run db:restore`) ;
+- `fichiers/<identifiant>` : chaque fichier, son `.json` de métadonnées, et `manifeste.json` ;
+- copie **incrémentale** : seuls les fichiers nouveaux ou manquants sont téléchargés ; chaque copie est relue et son empreinte SHA-256 enregistrée dans Neon ;
+- chaque exécution est inscrite dans la table `backup_runs` (visible dans Espace → Paramètres → Fichiers et sauvegardes), avec son résultat réel : une sauvegarde qui n'a pas tourné n'apparaît pas.
+
+**Planifier** (conseillé : chaque semaine, et avant toute mise à jour) :
+- Windows : Planificateur de tâches → *Créer une tâche de base* → programme `npm`, arguments `run backup -- --dossier "E:\Sauvegardes\emanprod"`, dossier de démarrage : celui du projet ;
+- macOS / Linux : `crontab -e` → `0 20 * * 5 cd /chemin/emanprod && npm run backup -- --dossier /media/sauvegarde/emanprod`.
+Gardez au moins deux supports (par exemple un disque à l'atelier, un autre ailleurs) et vérifiez de temps en temps que le dossier se remplit.
+
+**Contrôle d'intégrité**
+```
+npm run files:check                 # chaque fichier existe-t-il chez Cloudinary, avec la bonne taille ?
+npm run files:check -- --deep       # relit le contenu et compare l'empreinte SHA-256
+npm run files:check -- --orphans    # fichiers présents chez Cloudinary mais absents de la base
+npm run files:check -- --cleanup    # efface les envois abandonnés depuis plus de 24 h
+```
+Les orphelins ne sont effacés qu'avec `--clean-orphans --yes`, et seulement s'ils ont plus de 24 h.
+
+**Restaurer des fichiers**
+```
+npm run files:check                                   # repère les fichiers introuvables
+npm run files:restore -- --dossier "E:\Sauvegardes\emanprod"           # les remet chez Cloudinary
+npm run files:restore -- --dossier "E:\…" <identifiant> <identifiant>   # ou seulement ceux-là
+```
+Chaque copie est contrôlée (empreinte) avant d'être renvoyée, au même identifiant Cloudinary. Les adresses des réalisations sont mises à jour automatiquement.
+
+**Restaurer toute la plateforme** (perte de la base et du compte Cloudinary) : créez une base Neon vide, `npm run db:restore -- "<dossier>/base/<date>"`, créez le nouveau compte Cloudinary et ses variables, puis `npm run files:restore -- --dossier "<dossier>"` après avoir marqué les fichiers comme manquants avec `npm run files:check`.
 
 ## 5. Ce qu'il ne faut jamais faire
 

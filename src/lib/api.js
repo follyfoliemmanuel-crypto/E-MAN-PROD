@@ -219,18 +219,41 @@ export async function markNotificationsRead(ids) {
 }
 
 // Fichiers : préparation, envoi direct au stockage, vérification.
+// Le serveur renvoie une autorisation signée : un formulaire signé pour Cloudinary (champs
+// + fichier), ou une adresse PUT (stockage local de développement). Aucune clé secrète ici.
 export async function uploadFile(purpose, targetId, file) {
   if (DEMO) throw new Error('L’envoi de fichiers n’est pas disponible en démonstration.');
   const { file_id: id, upload } = await call('/api/files', { method: 'POST', body: { purpose, target_id: targetId, filename: file.name, mime_type: file.type, size: file.size } });
   let res;
   try {
-    res = await fetch(upload.url, { method: upload.method, headers: upload.headers, body: file });
+    if (upload.fields) {
+      const form = new FormData();
+      for (const [k, v] of Object.entries(upload.fields)) form.append(k, v);
+      form.append('file', file);
+      res = await fetch(upload.url, { method: upload.method || 'POST', body: form });
+    } else {
+      res = await fetch(upload.url, { method: upload.method, headers: upload.headers, body: file });
+    }
   } catch {
     throw new Error('Envoi interrompu. Vérifiez votre connexion et réessayez.');
   }
-  if (!res.ok) throw new Error('Le stockage a refusé le fichier. Réessayez.');
+  if (!res.ok) {
+    // Message de Cloudinary (format refusé, fichier trop lourd…), sans détail technique.
+    const detail = await res.json().then((j) => j?.error?.message || '').catch(() => '');
+    throw new Error(/size|large/i.test(detail) || res.status === 413 ? 'Fichier trop volumineux pour le stockage.'
+      : /format|allowed/i.test(detail) ? 'Format de fichier refusé par le stockage.' : 'Le stockage a refusé le fichier. Réessayez.');
+  }
   return (await call('/api/files', { method: 'POST', body: { action: 'confirm', id } })).file;
 }
+
+/** Tailles et formats acceptés par usage (lus une fois sur le serveur). */
+let limitsPromise = null;
+export function fileLimits() {
+  if (DEMO) return Promise.resolve({});
+  limitsPromise ||= call('/api/files?limits=1').then((r) => r.limits).catch(() => { limitsPromise = null; return {}; });
+  return limitsPromise;
+}
+export const formatMb = (bytes) => `${Math.round((bytes / 1048576) * 10) / 10} Mo`.replace('.', ',');
 export const fileUrl = (id) => `/api/files?id=${encodeURIComponent(id)}`;
 
 // Compte client
@@ -395,6 +418,7 @@ export const space = {
   verify: (code) => call('/api/documents?verify=' + encodeURIComponent(code)),
   // Paramètres et e-mails (admin)
   emailStatus: () => call('/api/manage', { method: 'POST', body: { action: 'email.status' } }).then((r) => r.result),
+  storageStatus: () => (DEMO ? Promise.resolve({ active: null, max_bytes: null, cloudinary: { configured: false, missing: ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'] }, by_driver: [], integrity: {}, runs: [], not_backed_up: 0 }) : call('/api/manage', { method: 'POST', body: { action: 'storage.status' } }).then((r) => r.result)),
   authStatus: () => (DEMO ? Promise.resolve({ google: { configured: false, secret: false, client_id: null, origin: window.location.origin, redirect_uri: `${window.location.origin}/api/auth/google-callback`, linked_accounts: 0 } }) : call('/api/manage', { method: 'POST', body: { action: 'auth.status' } }).then((r) => r.result)),
   emailPreview: (template, subject, intro) => call('/api/manage', { method: 'POST', body: { action: 'email.preview', template, subject, intro } }).then((r) => r.result),
   emailTest: (template) => call('/api/manage', { method: 'POST', body: { action: 'email.test', template } }).then((r) => r.result),

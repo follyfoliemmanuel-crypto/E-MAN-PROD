@@ -29,7 +29,9 @@ api/_lib/                (non exposé comme route)
   services/              RÈGLES MÉTIER et contrôles d'accès : quotes, orders, enrollments, clients,
                          files, inbox, content
   schemas.js             validation Zod (champs, statuts) ; activity.js journal + notifications
-  storage.js             stockage S3 compatible (signature SigV4) ou dossier local en développement
+  storage.js             routeur de stockage : Cloudinary (fournisseur unique), ancien S3 en lecture, local en développement
+  storage/cloudinary.js  signatures, envoi direct, vérification, liens privés temporaires, suppression
+  storage/s3.js          ancien stockage S3 (lecture et suppression des fichiers v3.0)
   db.js, http.js, auth.js, mail.js
 db/migrations/           001 → 006 (base, backend, auth, espaces, documents, performances) — appliquées par db:migrate
 db/schema-reference.sql  schéma complet après migration (lecture seule, pour consultation)
@@ -132,20 +134,20 @@ Tables techniques : `counters` (numérotation), `schema_migrations`, `rate_event
 
 La configuration de Google est décrite dans [CONFIGURATION.md](CONFIGURATION.md#3-connexion-google). Rôles et droits : [ROLES.md](ROLES.md).
 
-## Fichiers joints (stockage S3 compatible)
+## Fichiers (Cloudinary + Neon, v3.2)
 
-Les clients connectés peuvent joindre des fichiers à leurs devis et commandes, et l'atelier aux réalisations. Formats acceptés :
-- pièces jointes : JPG, PNG, WebP, PDF, AI, EPS, PSD, CDR (CorelDRAW) ou ZIP, 25 Mo maximum ;
-- photos de réalisations : JPG, PNG ou WebP, 5 Mo maximum.
+Les clients connectés joignent des fichiers à leurs devis, commandes et messages ; l'équipe ajoute les photos des réalisations, les supports de formation et les documents des inscrits. Formats acceptés :
+- pièces jointes : JPG, PNG, WebP, PDF, AI, EPS, PSD, CDR (CorelDRAW), ZIP, Word, Excel, PowerPoint, **10 Mo maximum** (limite de l'offre gratuite de Cloudinary, réglable par `CLOUDINARY_MAX_FILE_MB`) ; au-delà, le site oriente vers WhatsApp ;
+- photos de réalisations : JPG, PNG ou WebP, 5 Mo maximum ; photos de profil : 2 Mo.
 
 Contrôles :
 1. Avant l'envoi : droits, extension, type MIME annoncé et taille.
-2. Pendant l'envoi : le navigateur envoie directement au stockage, avec une adresse signée valable 10 minutes. Le type et la taille y sont signés, donc le stockage refuse tout autre fichier.
-3. Après l'envoi : relecture de la taille et des premiers octets du fichier. Un faux PDF, par exemple un programme renommé, est refusé puis effacé.
+2. Pendant l'envoi : le navigateur envoie directement à Cloudinary avec une autorisation signée par le serveur (identifiant aléatoire, privé ou public, formats autorisés, pas d'écrasement). Le moindre changement par le navigateur invalide la signature.
+3. Après l'envoi : taille et format relus chez Cloudinary ; pour les fichiers bruts (PDF, AI…), 64 premiers octets relus pour vérifier la vraie signature. Un faux PDF est refusé puis effacé.
 
-Le seau reste **privé** : chaque téléchargement passe par `/api/files`, qui vérifie les droits puis redirige vers un lien de 5 minutes. Les fichiers sont toujours téléchargés, jamais affichés dans le navigateur, sauf les images.
+Les fichiers privés (tout sauf les réalisations) ne sont accessibles que par lien signé : téléchargement valable 5 minutes, donné par `/api/files` après contrôle des droits. Les PDF et archives sont toujours téléchargés, jamais affichés dans le site. Les réalisations sont servies par le CDN de Cloudinary, optimisées (format moderne, compression, largeur adaptée), sans modifier l'original.
 
-Mise en place : [CONFIGURATION.md](CONFIGURATION.md#5-stockage-des-fichiers-s3-compatible).
+Sauvegarde, intégrité, restauration : [SAUVEGARDE.md](SAUVEGARDE.md#4-fichiers-cloudinary--sauvegarde-indépendante). Mise en place : [CONFIGURATION.md](CONFIGURATION.md#5-stockage-des-fichiers-cloudinary-fournisseur-unique).
 
 ## Espaces client et administration (v2.7)
 

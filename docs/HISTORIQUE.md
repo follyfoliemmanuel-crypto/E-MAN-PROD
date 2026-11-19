@@ -1,5 +1,16 @@
 # Historique des versions et des vérifications
 
+## v3.2 — fichiers sur Cloudinary, métadonnées dans Neon
+- **Cloudinary fournisseur unique** : images (`image`) et documents (`raw`), envoi direct navigateur → Cloudinary signé par le serveur, aucun fichier ne passe par Vercel, aucun SDK ajouté.
+- **Confidentialité** : tout est privé (`authenticated`) sauf les réalisations ; liens de téléchargement signés de 5 minutes après contrôle des droits ; PDF et archives toujours en pièce jointe.
+- **Contrôles conservés** : droits, extension, MIME, taille relue chez Cloudinary, vraie signature du contenu (format décodé pour les images, 64 premiers octets pour les fichiers bruts).
+- **Limite réelle** : pièces jointes à 10 Mo (offre gratuite), affichée dans les formulaires, réglable par `CLOUDINARY_MAX_FILE_MB`.
+- **Images optimisées** : réalisations servies par le CDN (format moderne, compression, largeur adaptée), photos de profil recadrées, originaux intacts.
+- **Compatibilité** : chaque fichier est lu chez le fournisseur indiqué dans sa ligne ; les anciens fichiers (local, S3) restent lisibles ; `npm run files:migrate` les copie avec vérification SHA-256 sans effacer les originaux.
+- **Migration 007** (additive) : références Cloudinary, empreinte, intégrité, sauvegarde, ancienne référence ; table `backup_runs`.
+- **Sauvegarde indépendante** : `npm run backup` (base + fichiers vers un dossier d'E-MAN PROD), `files:check` (intégrité, orphelins, envois abandonnés), `files:restore`. Paramètres → Fichiers et sauvegardes affiche l'état réel.
+- **Vérification réelle du compte** : `npm run storage:check` (à lancer avec les identifiants Cloudinary).
+
 ## v3.1 — connexion et inscription dans l'en-tête
 - **En-tête** : boutons « Connexion » et « Inscription » visibles sur toutes les pages. Sur téléphone, « Connexion » reste dans l'en-tête et les deux boutons sont en tête du menu. Une fois connecté, la photo de profil (ou les initiales) remplace ces boutons, avec la pastille des notifications non lues et un menu : Mon espace / Tableau de bord, Notifications, Mon profil, Sécurité, Se déconnecter.
 - **Google** : « Se connecter avec Google » et « S'inscrire avec Google » sont toujours affichés. Tant que les identifiants ne sont pas configurés, le bouton est grisé avec la mention « bientôt disponible ». L'adresse `/api/auth/google` ne renvoie plus de page d'erreur : elle ramène sur le site avec un message (non configuré, annulé, trop de tentatives).

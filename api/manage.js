@@ -9,6 +9,7 @@
 //   testimonial.update / testimonial.delete
 //   setting.update                         réglages du site (coordonnées, textes)
 //   auth.status                            état de la connexion Google (admin)
+//   storage.status                         état du stockage Cloudinary et des sauvegardes (admin)
 // Anciens noms (v2.4), toujours acceptés : course.update, prestation.update, gallery.*.
 import { z } from 'zod';
 import { handler, send, readJson, HttpError } from './_lib/http.js';
@@ -19,6 +20,7 @@ import { TEMPLATES, renderEmail } from './_lib/emails.js';
 import { deliverEmail, mailStatus } from './_lib/mail.js';
 import { WHATSAPP_PURPOSES, SOCIALS } from './_lib/settings.js';
 import { googleConfigured, redirectUri } from './_lib/google.js';
+import { storageStatus } from './_lib/storage.js';
 import { siteUrl } from './_lib/http.js';
 import * as s from './_lib/schemas.js';
 import * as content from './_lib/services/content.js';
@@ -242,6 +244,19 @@ const actions = {
         linked_accounts: n,
       },
     };
+  },
+  // Fichiers : fournisseur, limite réelle, répartition, dernières sauvegardes réellement faites. Admin.
+  'storage.status': async (a) => {
+    adminOnly(a);
+    const [byDriver, integrity, runs, pending] = await Promise.all([
+      query(`select driver, count(*)::int as n, coalesce(sum(size_bytes), 0)::float8 as bytes from uploaded_files where status = 'ready' group by driver order by driver`),
+      query(`select coalesce(integrity_status, 'non vérifié') as state, count(*)::int as n from uploaded_files where status = 'ready' group by 1`),
+      query(`select distinct on (kind) kind, started_at, finished_at, status, copied, skipped, failed, bytes::float8 as bytes from backup_runs order by kind, started_at desc`),
+      query(`select count(*)::int as n from uploaded_files where status = 'ready' and backed_up_at is null`),
+    ]);
+    const st = storageStatus();
+    return { ...st, cloudinary: { configured: st.cloudinary.configured, missing: st.cloudinary.missing, cloud: st.cloudinary.cloud, folder: st.cloudinary.folder },
+      by_driver: byDriver, integrity: Object.fromEntries(integrity.map((r) => [r.state, r.n])), runs, not_backed_up: pending[0].n };
   },
   'setting.update': (a, b) => {
     // Coordonnées et textes officiels : réservés aux administrateurs.

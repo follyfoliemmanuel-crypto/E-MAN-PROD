@@ -8,7 +8,7 @@
 - **Espace de gestion** (ADMIN et STAFF) : tableau de bord, clients, devis, commandes, paiements et factures, formations et apprenants, réalisations, contenu, annonces, équipe, paramètres.
 - **Comptes** : e-mail et mot de passe (Argon2id), connexion Google, sessions sécurisées, rôles ADMIN, STAFF et CLIENT.
 
-**Technique** : React 18 + Vite (site), fonctions Node sur Vercel (`/api`), PostgreSQL sur Neon, stockage S3 compatible (Cloudflare R2), e-mails Resend ou Brevo, PDF générés par le serveur (pdf-lib). Node.js 24.7 ou plus.
+**Technique** : React 18 + Vite (site), fonctions Node sur Vercel (`/api`), PostgreSQL sur Neon, fichiers sur Cloudinary (métadonnées dans Neon), e-mails Resend ou Brevo, PDF générés par le serveur (pdf-lib). Node.js 24.7 ou plus.
 
 ## Démarrage rapide (sur votre PC)
 
@@ -65,7 +65,7 @@ docs/                documentation
 ## À fournir par E-MAN PROD avant l'ouverture
 
 1. Le **nom de domaine** réel (à reporter dans `SITE_URL` et `VITE_SITE_URL`).
-2. Les comptes **Vercel Pro**, **Neon**, **Cloudflare R2**, **Resend** et **Google Cloud** (identifiants créés par l'entreprise : aucun n'est fourni).
+2. Les comptes **Vercel Pro**, **Neon**, **Cloudinary**, **Resend** et **Google Cloud** (identifiants créés par l'entreprise : aucun n'est fourni).
 3. Dans Paramètres : numéros WhatsApp officiels, réseaux sociaux, informations légales (raison sociale, RCCM, NIF…), conditions des devis et moyens de paiement.
 4. Dans Formations : tarifs, durées, sessions et conditions d'attestation ; dans Réalisations : les photos des travaux.
 5. Vérifier auprès de l'IPDCP si une déclaration du traitement des données clients est nécessaire (loi n° 2019-014).

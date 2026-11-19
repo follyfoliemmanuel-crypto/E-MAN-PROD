@@ -26,14 +26,15 @@ Les informations de l'entreprise (coordonnées, WhatsApp, mentions légales, con
 | `MAIL_FROM` | pour les e-mails | Expéditeur, sur un domaine vérifié | `E-MAN PROD <notifications@emanprod.com>` |
 | `MAIL_REPLY_TO` | non | Adresse de réponse (par défaut emanprod3@gmail.com) | `emanprod3@gmail.com` |
 | `NOTIFY_TO` | non | Destinataire des alertes de l'équipe (sinon : Paramètres → Notifications) | |
-| `S3_ENDPOINT` | pour les fichiers | Point d'accès du stockage (section 5) | `https://<compte>.r2.cloudflarestorage.com` |
-| `S3_REGION` | pour les fichiers | Région (`auto` pour R2) | `auto` |
-| `S3_BUCKET` | pour les fichiers | Nom du seau privé | `emanprod-fichiers` |
-| `S3_ACCESS_KEY_ID` | pour les fichiers | Clé d'accès | |
-| `S3_SECRET_ACCESS_KEY` | pour les fichiers | Clé secrète | |
-| `S3_PUBLIC_URL` | non | Domaine public du seau, pour servir les photos publiques en cache CDN | `https://fichiers.emanprod.com` |
+| `CLOUDINARY_CLOUD_NAME` | pour les fichiers | Nom du compte Cloudinary (section 5) | `emanprod` |
+| `CLOUDINARY_API_KEY` | pour les fichiers | Clé d'API (publique, envoyée au navigateur avec chaque signature) | `123456789012345` |
+| `CLOUDINARY_API_SECRET` | pour les fichiers | **Secret** : uniquement dans Vercel, jamais dans le code ni préfixé `VITE_` | |
+| `CLOUDINARY_MAX_FILE_MB` | non | Taille maximale par fichier de votre offre (gratuite : 10) | `10` |
+| `CLOUDINARY_FOLDER` | non | Dossier de l'application dans Cloudinary | `emanprod` |
+| `BACKUP_DIR` | non | Dossier de sauvegarde sur le poste qui lance `npm run backup` (jamais sur Vercel) | `E:\Sauvegardes\emanprod` |
+| `S3_*` | non | **Ancien stockage (v3.0)** : à garder uniquement tant que des fichiers y sont encore (lecture et suppression seulement, section 5) | |
 
-Anciennes variables encore acceptées : `RESEND_API_KEY`, `BREVO_API_KEY`. Variables réservées aux tests (ne pas définir en ligne) : `MAIL_TEST_ENDPOINT`, `STORAGE_DRIVER`, `LOCAL_UPLOAD_DIR`, `FILES_SECRET`.
+Anciennes variables encore acceptées : `RESEND_API_KEY`, `BREVO_API_KEY`. Variables réservées aux tests (ne pas définir en ligne ; ignorées sur Vercel pour les adresses de test) : `MAIL_TEST_ENDPOINT`, `CLOUDINARY_TEST_API_BASE`, `CLOUDINARY_TEST_DELIVERY_BASE`, `STORAGE_DRIVER`, `LOCAL_UPLOAD_DIR`, `FILES_SECRET`.
 
 Après toute modification dans Vercel : **redéployer** (Deployments → … → *Redeploy*). Les variables `VITE_*` sont intégrées au moment du build.
 
@@ -84,20 +85,37 @@ Sans fournisseur, le site fonctionne : les notifications restent dans les espace
 
 **Pourquoi emanprod3@gmail.com n'est pas l'expéditeur** : Resend n'envoie que depuis un domaine vérifié, et Brevo remplace les adresses gratuites (gmail.com) par une adresse technique. L'adresse Gmail sert donc d'adresse de réponse, de contact dans les e-mails et les PDF, et de destinataire par défaut des alertes.
 
-## 5. Stockage des fichiers (S3 compatible)
+## 5. Stockage des fichiers (Cloudinary, fournisseur unique)
 
-Sert aux pièces jointes des devis et commandes, aux photos des réalisations et du site, aux photos de profil, aux documents de formation. Le seau reste **privé** : chaque téléchargement passe par `/api/files`, qui vérifie les droits puis redirige vers un lien valable 5 minutes.
+Cloudinary stocke tous les fichiers ; Neon garde leurs métadonnées (propriétaire, droits, type, taille, référence Cloudinary, statut, dates). Le navigateur envoie chaque fichier **directement** à Cloudinary avec une autorisation signée par le serveur : les fichiers ne passent jamais par Vercel et la clé secrète ne quitte jamais le serveur.
 
-**Cloudflare R2 (recommandé)**
-1. R2 → *Create bucket* → `emanprod-fichiers` (privé).
-2. *Manage API tokens* → jeton « Object Read & Write » limité à ce seau.
-3. Variables : `S3_ENDPOINT=https://<id-compte>.r2.cloudflarestorage.com`, `S3_REGION=auto`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
-4. Réglages CORS du seau : autoriser `PUT` et `GET` depuis `https://www.emanprod.com`, en-tête `Content-Type`.
-5. Facultatif : un domaine public (par exemple `fichiers.emanprod.com`) pour le dossier `public/` du seau, puis `S3_PUBLIC_URL` : les photos publiques sont alors servies en cache par le CDN.
+| Fichier | Ressource Cloudinary | Livraison | Accès |
+|---|---|---|---|
+| Photos des réalisations | `image` | `upload` (publique) | CDN, format et compression automatiques, largeur adaptée |
+| Photos de profil | `image` | `authenticated` (privée) | adresse signée recadrée, donnée après contrôle des droits |
+| Images jointes (devis, commandes, messages…) | `image` | `authenticated` | lien de téléchargement signé, **5 minutes** |
+| PDF, AI, EPS, PSD, CDR, ZIP, Word, Excel, PowerPoint | `raw` | `authenticated` | lien de téléchargement signé, 5 minutes, toujours en pièce jointe |
 
-AWS S3, Backblaze B2 et Wasabi fonctionnent de la même façon. La politique de sécurité (CSP) autorise déjà les envois vers `*.r2.cloudflarestorage.com`, `*.amazonaws.com` et `*.backblazeb2.com` ; pour un autre fournisseur, ajoutez son domaine à `connect-src` dans `vercel.json`.
+Les originaux ne sont jamais transformés : les variantes (miniatures, WebP/AVIF) sont calculées à l'affichage.
 
-Sans ces variables : en local, les fichiers vont dans `.uploads/` ; en ligne, l'envoi de fichiers est désactivé et le site propose WhatsApp.
+**Mise en place**
+1. Créez un compte sur cloudinary.com (offre gratuite pour démarrer).
+2. *Settings → API Keys* : notez le *Cloud name*, l'*API Key* et l'*API Secret*.
+3. Vercel → *Settings → Environment Variables* : `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (et `CLOUDINARY_MAX_FILE_MB` si votre offre dépasse 10 Mo), puis **redéployez**.
+4. *Settings → Security* :
+   - cochez **« Allow delivery of PDF and ZIP files »** (bloqué par défaut sur les comptes gratuits ; sans ce réglage, les PDF et ZIP ne peuvent pas être téléchargés). Cloudinary vous demande d'accepter ses conditions pour ces fichiers ;
+   - activez **« Strict transformations »** : le site signe toutes ses adresses, ce réglage empêche des tiers de fabriquer des variantes qui consommeraient vos crédits ;
+   - laissez désactivés les envois non signés (*unsigned upload presets*).
+5. Sur votre poste, avec les mêmes trois variables dans `.env` : `npm run storage:check`. Le script fait un vrai envoi, une vraie lecture et une vraie suppression (image publique, image privée, PDF privé, format refusé) dans le dossier `emanprod/verification`. **Tant qu'il n'affiche pas « 0 échec », ne considérez pas le stockage comme opérationnel.**
+6. Espace → Paramètres → **Fichiers et sauvegardes** affiche l'état réel.
+
+**Limites de l'offre gratuite** (à vérifier sur votre compte, *Settings → Account*) : 10 Mo par image et par fichier brut, 25 crédits par mois (1 crédit = 1 Go stocké, ou 1 Go de bande passante, ou 1 000 transformations), 500 appels par heure à l'API d'administration (le site en fait un par envoi confirmé). La limite par fichier du site suit `CLOUDINARY_MAX_FILE_MB` (10 par défaut) : les pièces jointes sont limitées à 10 Mo et les formulaires l'affichent ; au-delà, le site oriente vers WhatsApp. Ne l'augmentez qu'après avoir vérifié la limite de votre offre (offre Plus : 20 Mo pour les images ; la limite des fichiers bruts est à confirmer auprès de Cloudinary). Les règles métier plus strictes restent appliquées (réalisations 5 Mo, photos de profil 2 Mo).
+
+**Contrôles de sécurité conservés** : droits vérifiés avant chaque téléchargement (sinon « introuvable »), extension + type MIME + signature réelle du contenu (format décodé par Cloudinary pour les images, 64 premiers octets relus pour les fichiers bruts), taille relue chez Cloudinary, identifiant aléatoire (jamais le nom du fichier), formats dangereux refusés (HTML, SVG, exécutables), suppression chez Cloudinary avant la base (si Cloudinary ne répond pas, la ligne est conservée).
+
+**Anciens fichiers** : un fichier enregistré avant la v3.2 (stockage local ou `S3_*`) reste lu chez son fournisseur d'origine, indiqué dans sa ligne. `npm run files:migrate` liste ceux à migrer ; `npm run files:migrate -- --apply` les copie vers Cloudinary, relit chaque copie et compare l'empreinte SHA-256 avant de changer la ligne. L'original n'est jamais effacé et l'ancienne référence reste en base (`previous_driver`, `previous_storage_key`). Gardez les variables `S3_*` tant que `files:migrate` en liste.
+
+Sans Cloudinary : en local, les fichiers vont dans `.uploads/` ; en ligne, l'envoi de fichiers est désactivé et le site propose WhatsApp.
 
 ## 6. Réglages dans le site (Espace → Paramètres, admin)
 

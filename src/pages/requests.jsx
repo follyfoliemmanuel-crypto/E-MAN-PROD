@@ -3,6 +3,7 @@
 // n'affiche que les actions que le serveur autorise (champ « allowed »).
 import React, { useCallback, useEffect, useState } from 'react';
 import { MessageCircle, Paperclip, Plus, Trash2, X, Download } from 'lucide-react';
+import { LimitHint } from '../lib/limits.jsx';
 import {
   DEMO, QUOTE_LABELS, ORDER_LABELS, PAYMENT_LABELS,
   fetchQuotes, getQuote, updateQuote, quoteStatus, convertQuote,
@@ -417,7 +418,7 @@ function Files({ list, purpose, targetId, canAdd, notify, onAdded }) {
           }} />
         </label>
       )}
-      {canAdd && <p className="hint">JPG, PNG, PDF, AI, EPS, PSD, CDR ou ZIP, 25 Mo maximum.</p>}
+      {canAdd && <p className="hint"><LimitHint purpose={purpose} formats="JPG, PNG, PDF, AI, EPS, PSD, CDR ou ZIP" /></p>}
     </div>
   );
 }

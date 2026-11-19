@@ -6,12 +6,14 @@
 //   GET ?id=&info=1              informations sur le fichier (JSON)
 //   DELETE {id}                  supprimer (auteur ou admin)
 //   POST {action: 'cleanup'}     admin : effacer les envois abandonnés
-// En développement sans stockage S3 : PUT/GET ?local=… (stockage dans .uploads/).
+//   GET ?limits=1                tailles et formats acceptés par usage (public)
+// Le navigateur envoie les fichiers directement à Cloudinary : ils ne transitent jamais par
+// cette fonction. En développement sans Cloudinary : PUT/GET ?local=… (dossier .uploads/).
 import { z } from 'zod';
 import { handler, send, readJson, HttpError } from './_lib/http.js';
 import { currentUser, requireUser, requireAdmin, rateLimit } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
-import { storage, verifyLocalSignature } from './_lib/storage.js';
+import { provider, storageStatus, verifyLocalSignature } from './_lib/storage.js';
 import * as s from './_lib/schemas.js';
 import * as files from './_lib/services/files.js';
 
@@ -41,9 +43,12 @@ export default handler({
 
   async GET(req, res) {
     const q = req.query || {};
+    if (q.limits === '1') {
+      return send(res, 200, { limits: files.uploadLimits() });
+    }
     if (q.local === 'get') {
       verifyLocalSignature(process.env, q);
-      const data = await storage().read(q.key).catch(() => null);
+      const data = await provider('local').readKey(q.key).catch(() => null);
       if (!data) throw new HttpError(404, 'Fichier introuvable.');
       res.statusCode = 200;
       res.setHeader('Content-Type', q.type);
@@ -67,10 +72,10 @@ export default handler({
     const q = req.query || {};
     if (q.local !== 'put') throw new HttpError(404, 'Adresse inconnue.');
     verifyLocalSignature(process.env, q);
-    const store = storage();
-    if (store.name !== 'local') throw new HttpError(404, 'Adresse inconnue.');
+    if (storageStatus().active !== 'local') throw new HttpError(404, 'Adresse inconnue.');
+    const store = provider('local');
     if (String(req.headers['content-type'] || '') !== q.type) throw new HttpError(400, 'Type de fichier différent de celui annoncé.');
-    await store.write(q.key, req, { size: Number(q.size), contentType: q.type });
+    await store.receive(q.key, req, { size: Number(q.size), contentType: q.type });
     res.statusCode = 200;
     res.end();
   },

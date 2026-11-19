@@ -10,7 +10,7 @@ import { SettingForm, BusinessForm } from './team.jsx';
 
 const TABS = [
   ['coordonnees', 'Coordonnées'], ['whatsapp', 'WhatsApp'], ['reseaux', 'Réseaux sociaux'], ['legal', 'Informations légales'],
-  ['documents', 'Devis et factures'], ['emails', 'E-mails'], ['notifications', 'Notifications'], ['connexion', 'Connexion Google'],
+  ['documents', 'Devis et factures'], ['emails', 'E-mails'], ['notifications', 'Notifications'], ['connexion', 'Connexion Google'], ['stockage', 'Fichiers et sauvegardes'],
 ];
 
 export function SettingsAdmin({ notify, params = {}, go }) {
@@ -32,7 +32,7 @@ export function SettingsAdmin({ notify, params = {}, go }) {
   const c = data?.content || {};
   return (
     <>
-      <SectionHead title="Paramètres" lead="Coordonnées, numéros WhatsApp, mentions légales, documents, e-mails et connexion Google. Les changements s’appliquent au site et aux PDF dès l’enregistrement." />
+      <SectionHead title="Paramètres" lead="Coordonnées, numéros WhatsApp, mentions légales, documents, e-mails, connexion Google, fichiers et sauvegardes. Les changements s’appliquent au site et aux PDF dès l’enregistrement." />
       <div className="tabBar" role="tablist" aria-label="Rubriques des paramètres">
         {TABS.map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => go('parametres', { onglet: k })}>{label}</button>
@@ -61,6 +61,7 @@ export function SettingsAdmin({ notify, params = {}, go }) {
           {tab === 'documents' && <DocumentsForm value={c.documents || {}} onSave={(v) => save('documents', v)} />}
           {tab === 'emails' && <EmailsAdmin notify={notify} overrides={c.email_templates || {}} onSave={(v) => save('email_templates', v)} />}
           {tab === 'connexion' && <GoogleStatus notify={notify} />}
+          {tab === 'stockage' && <StorageStatus />}
           {tab === 'notifications' && <NotificationsForm value={c.notifications || {}} business={c.business || {}} onSave={(v) => save('notifications', v)} />}
         </div>
       )}
@@ -186,6 +187,47 @@ function GoogleStatus({ notify }) {
       </dl>
       {!g.configured && <p className="muted">Ensuite, ajoutez GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET dans les variables d’environnement Vercel, puis redéployez. Le guide pas à pas est dans docs/CONFIGURATION.md.</p>}
     </section>
+  );
+}
+
+const RUN_KIND = { database: 'Base de données', files: 'Fichiers', integrity: 'Contrôle d’intégrité' };
+const RUN_STATUS = { ok: 'réussie', partial: 'partielle', failed: 'échec', running: 'en cours' };
+const DRIVER_LABEL = { cloudinary: 'Cloudinary', s3: 'Ancien stockage S3 (à migrer)', local: 'Dossier local (développement)' };
+
+/** Fichiers : fournisseur, limite, répartition, sauvegardes réellement effectuées (journal backup_runs). */
+function StorageStatus() {
+  const [{ data, error, loading }, reload] = useLoad(() => space.storageStatus(), []);
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  const ok = data.cloudinary.configured;
+  const mb = (b) => `${(b / 1048576).toFixed(1).replace('.', ',')} Mo`;
+  const lastBackup = data.runs.find((r) => r.kind === 'files');
+  return (
+    <>
+      <section className={`spaceBlock mailStatus ${ok ? 'ok' : 'warn'}`} aria-labelledby="storage-status">
+        <h2 className="subTitle" id="storage-status">{ok ? <><CircleCheck size={18} aria-hidden="true" /> Stockage Cloudinary configuré</> : <><TriangleAlert size={18} aria-hidden="true" /> Stockage Cloudinary non configuré</>}</h2>
+        <dl className="kv">
+          <dt>Compte</dt><dd>{data.cloudinary.cloud || `manquant : ${data.cloudinary.missing.join(', ')}`}</dd>
+          <dt>Dossier</dt><dd>{data.cloudinary.folder || '—'}</dd>
+          <dt>Taille maximale par fichier</dt><dd>{data.max_bytes ? mb(data.max_bytes) : '—'}</dd>
+        </dl>
+        {!ok && <p className="muted">Sans Cloudinary, l’envoi de fichiers est désactivé en ligne : les clients passent par WhatsApp. Renseignez CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY et CLOUDINARY_API_SECRET dans Vercel, puis redéployez (docs/CONFIGURATION.md).</p>}
+      </section>
+      <section className="spaceBlock" aria-labelledby="storage-files">
+        <h2 className="subTitle" id="storage-files">Fichiers enregistrés</h2>
+        {data.by_driver.length ? (
+          <dl className="kv">{data.by_driver.map((d) => <React.Fragment key={d.driver}><dt>{DRIVER_LABEL[d.driver] || d.driver}</dt><dd>{d.n} fichier(s), {mb(d.bytes)}</dd></React.Fragment>)}</dl>
+        ) : <p className="muted">Aucun fichier pour l’instant.</p>}
+        <p className="muted">Contrôle d’intégrité : {Object.entries(data.integrity).map(([k, n]) => `${k} : ${n}`).join(' · ') || 'aucun fichier'}.</p>
+      </section>
+      <section className={`spaceBlock mailStatus ${lastBackup?.status === 'ok' && !data.not_backed_up ? 'ok' : 'warn'}`} aria-labelledby="storage-backup">
+        <h2 className="subTitle" id="storage-backup">Sauvegardes</h2>
+        {data.runs.length ? (
+          <dl className="kv">{data.runs.map((r) => <React.Fragment key={r.kind}><dt>{RUN_KIND[r.kind]}</dt><dd>{formatDate(r.started_at)} : {RUN_STATUS[r.status]}{r.kind !== 'database' ? ` (${r.copied} copié(s), ${r.failed} échec(s))` : ''}</dd></React.Fragment>)}</dl>
+        ) : <p><strong>Aucune sauvegarde n’a encore été faite.</strong></p>}
+        <p className="muted">{data.not_backed_up} fichier(s) sans copie de sauvegarde. Cloudinary n’est pas une sauvegarde : lancez « npm run backup » sur le poste qui garde les copies (docs/SAUVEGARDE.md).</p>
+      </section>
+    </>
   );
 }
 

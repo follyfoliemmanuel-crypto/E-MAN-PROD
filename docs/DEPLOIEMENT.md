@@ -1,12 +1,12 @@
 # Mise en production
 
-Plateforme cible, adaptée au code réel : **Vercel** (site React/Vite + fonctions Node dans `/api`) et **Neon** (PostgreSQL). Fichiers sur un stockage S3 compatible (Cloudflare R2 conseillé), e-mails par Resend ou Brevo. Toutes les variables sont décrites dans [CONFIGURATION.md](CONFIGURATION.md).
+Plateforme cible, adaptée au code réel : **Vercel** (site React/Vite + fonctions Node dans `/api`) et **Neon** (PostgreSQL). Fichiers sur **Cloudinary** (fournisseur unique, métadonnées dans Neon), e-mails par Resend ou Brevo. Toutes les variables sont décrites dans [CONFIGURATION.md](CONFIGURATION.md).
 
 ## 0. Avant de commencer
 
 - **Offre Vercel** : l'offre gratuite *Hobby* est réservée à un usage personnel et non commercial. Le site d'E-MAN PROD étant celui d'une entreprise, il relève de l'offre **Pro** (voir https://vercel.com/docs/plans/hobby).
 - Vérifier de même les conditions de l'offre Neon choisie (stockage, durée de l'historique pour les restaurations).
-- Prévoir : le nom de domaine, un compte Google (connexion Google), un compte Resend, un compte Cloudflare (R2 et éventuellement DNS).
+- Prévoir : le nom de domaine, un compte Google (connexion Google), un compte Resend, un compte Cloudinary (vérifier sur son offre la taille maximale des fichiers et les crédits mensuels).
 - Faire une copie de secours de la base en ligne si elle existe déjà (voir [SAUVEGARDE.md](SAUVEGARDE.md)).
 
 ## 1. Code source sur GitHub
@@ -48,7 +48,7 @@ update users set role = 'admin' where lower(email) = lower('emanprod3@gmail.com'
 3. *Settings* → *General* → **Node.js Version : 24.x** (nécessaire pour Argon2id).
 4. *Settings* → *Environment Variables* (environnement *Production*), au minimum :
    `DATABASE_URL`, `SITE_URL`, `VITE_SITE_URL`, `AUTH_SECRET`, `VITE_WHATSAPP_NUMBER`,
-   puis selon les services : `GOOGLE_*`, `MAIL_*`, `S3_*` (voir CONFIGURATION.md).
+   puis selon les services : `GOOGLE_*`, `MAIL_*`, `CLOUDINARY_*` (voir CONFIGURATION.md). Ensuite, sur votre poste : `npm run storage:check` (vrai test d'envoi, lecture et suppression chez Cloudinary).
 5. *Deploy*. `vercel.json` gère déjà : adresses des pages, plan du site `/sitemap.xml`, en-têtes de sécurité (CSP, HSTS…), cache des fichiers.
 
 Le build exécute `vite build` puis `scripts/prerender-meta.mjs`, qui écrit une page HTML par adresse (titre, description, données structurées) et `robots.txt` pour le domaine de `VITE_SITE_URL`/`SITE_URL`.

@@ -10,6 +10,7 @@ import {
   invoicePdfUrl, receiptPdfUrl, certificatePdfUrl, PAYMENT_METHOD_LABELS, INVOICE_STATE,
 } from '../../lib/api.js';
 import { useLoad, Loading, ErrorBox, EmptyState, SectionHead, StatCard } from './ui.jsx';
+import { LimitHint } from '../../lib/limits.jsx';
 
 const size = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`);
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,.ai,.eps,.psd,.cdr,.zip';
@@ -144,7 +145,7 @@ export function QuoteRequestForm({ user, notify, onDone, onCancel }) {
         <label className="field"><span className="fieldLabel">Téléphone ou WhatsApp</span><input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
         <label className="field"><span className="fieldLabel">Images ou documents (logo, maquette…)</span>
           <input type="file" multiple accept={ACCEPT} disabled={DEMO} onChange={(e) => setFiles([...e.target.files].slice(0, 10))} />
-          <span className="hint">JPG, PNG, PDF, AI, EPS, PSD, CDR ou ZIP, 25 Mo maximum par fichier, 10 fichiers.</span>
+          <LimitHint purpose="quote" formats="JPG, PNG, PDF, AI, EPS, PSD, CDR ou ZIP" per=" par fichier" after=", 10 fichiers" />
         </label>
       </div>
       {files.length > 0 && <ul className="fileList">{files.map((f) => <li key={f.name}><Paperclip size={14} aria-hidden="true" />{f.name} <span className="muted">{size(f.size)}</span></li>)}</ul>}

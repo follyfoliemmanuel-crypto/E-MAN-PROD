@@ -375,7 +375,7 @@ function MediaAdmin({ notify }) {
   return (
     <div className="mediaAdmin">
       <p className="muted mediaIntro">
-        Choisissez une photo sur votre ordinateur ou votre téléphone (JPG, PNG ou WebP, 5 Mo maximum) : elle est envoyée, optimisée et affichée sur le site aussitôt.
+        Choisissez une photo sur votre ordinateur ou votre téléphone (JPG, PNG ou WebP, jusqu’à 50 Mo) : elle est envoyée, optimisée et affichée sur le site aussitôt.
         Vous pouvez aussi coller l’adresse d’une image (https://…). Utilisez uniquement des photos dont vous avez les droits, et ne présentez une photo comme une réalisation d’E-MAN PROD que si c’en est une.
       </p>
       {groups.map((g) => (

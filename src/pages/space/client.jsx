@@ -526,7 +526,7 @@ export function AvatarEditor({ user, notify, onChange }) {
           }} />
         </label>
         {url && <button type="button" className="linkBtn" disabled={busy} onClick={async () => { await space.removeAvatar(); onChange(null); notify('Photo retirée.'); }}>Retirer</button>}
-        <p className="hint">JPG, PNG ou WebP, 2 Mo maximum. Visible de vous et de l’équipe E-MAN PROD.</p>
+        <p className="hint">JPG, PNG ou WebP, jusqu’à 50 Mo (allégée automatiquement). Visible de vous et de l’équipe E-MAN PROD.</p>
       </div>
     </div>
   );

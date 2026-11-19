@@ -149,7 +149,10 @@ export function cloudinaryProvider(cfg) {
       return info;
     },
     /** Adresse donnée après contrôle des droits. */
-    downloadUrl(row, { inline = false, variant } = {}) {
+    downloadUrl(row, { inline = false, variant, direct = false } = {}) {
+      // direct : image d'origine par lien de téléchargement temporaire, sans transformation
+      // (secours si une adresse de livraison signée est refusée par le compte Cloudinary).
+      if (direct && inline && rt(row) === 'image') return privateDownloadUrl(row, { attachment: false });
       if (dt(row) === 'upload') return inline ? deliveryUrl(row, variant || 'gallery') : privateDownloadUrl(row, { attachment: true });
       if (inline && row.purpose === 'avatar') return deliveryUrl(row, 'avatar');
       // Privé : original exact, lien de 5 minutes ; affiché seulement pour les images.

@@ -46,8 +46,10 @@ export const PURPOSES = {
   quote: { formats: ATTACHMENTS, maxBytes: 25 * MB, perTarget: 10, team: 'quotes', visibility: 'private' },
   order: { formats: ATTACHMENTS, maxBytes: 25 * MB, perTarget: 20, team: 'orders', visibility: 'private' },
   message: { formats: ATTACHMENTS, maxBytes: 25 * MB, perTarget: 5, team: null, visibility: 'private' },
-  portfolio: { formats: IMAGES, maxBytes: 5 * MB, perTarget: 1, team: 'content', teamOnly: true, visibility: 'public' },
-  site_media: { formats: IMAGES, maxBytes: 5 * MB, perTarget: null, team: 'content', teamOnly: true, visibility: 'public' },
+  // Photos du site : 10 Mo (limite d'une image sur l'offre gratuite de Cloudinary) ; le
+  // navigateur réduit avant l'envoi les photos plus lourdes, jusqu'à 50 Mo (src/lib/images.js).
+  portfolio: { formats: IMAGES, maxBytes: 10 * MB, perTarget: 1, team: 'content', teamOnly: true, visibility: 'public' },
+  site_media: { formats: IMAGES, maxBytes: 10 * MB, perTarget: null, team: 'content', teamOnly: true, visibility: 'public' },
   // Photo de profil : envoyée par la personne elle-même, visible d'elle et de l'équipe « clients ».
   avatar: { formats: IMAGES, maxBytes: 2 * MB, perTarget: null, team: 'clients', visibility: 'private' },
   // Documents d'une inscription (attestation, support) : déposés par l'équipe « formations ».
@@ -250,13 +252,13 @@ export async function canRead(actor, f) {
 }
 
 /** Adresse de téléchargement temporaire (5 minutes), après contrôle des droits. */
-export async function downloadUrl(actor, id, { inline = false } = {}) {
+export async function downloadUrl(actor, id, { inline = false, direct = false } = {}) {
   const f = await loadFile(id);
   if (!(await canRead(actor, f))) throw new HttpError(404, 'Fichier introuvable.');
   if (f.status !== 'ready') throw new HttpError(409, 'Ce fichier n’est pas encore disponible.');
   // Seules les images s'affichent dans le navigateur ; le reste est toujours téléchargé.
   const show = inline && f.mime_type.startsWith('image/');
-  return guarded('download', f, async () => providerOf(f).downloadUrl(f, { filename: f.original_name, inline: show, variant: f.purpose === 'avatar' ? 'avatar' : 'gallery' }));
+  return guarded('download', f, async () => providerOf(f).downloadUrl(f, { filename: f.original_name, inline: show, direct, variant: f.purpose === 'avatar' ? 'avatar' : 'gallery' }));
 }
 
 /**

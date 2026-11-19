@@ -1,5 +1,5 @@
 -- =============================================================================
--- E-MAN PROD v3.3.0 : installation ou mise à jour de la base de données
+-- E-MAN PROD v3.3.1 : installation ou mise à jour de la base de données
 -- Fichier généré par « npm run db:sql » à partir de db/migrations : ne pas modifier à la main.
 --
 -- Utilisation (Neon) : console.neon.tech → votre projet → SQL Editor → coller tout

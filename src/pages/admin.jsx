@@ -349,7 +349,7 @@ export function GalleryAdmin({ notify }) {
       <form className="spaceBlock spaceForm" onSubmit={add}>
         <h2 className="subTitle">Ajouter une réalisation</h2>
         <div className="fieldRow">
-          <label className="field"><span className="fieldLabel">Photo (JPG, PNG ou WebP, 5 Mo)</span><input type="file" accept=".jpg,.jpeg,.png,.webp" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
+          <label className="field"><span className="fieldLabel">Photo (JPG, PNG ou WebP, jusqu’à 50 Mo, allégée automatiquement)</span><input type="file" accept=".jpg,.jpeg,.png,.webp" onChange={(e) => setFile(e.target.files?.[0] || null)} /></label>
           <label className="field"><span className="fieldLabel">… ou adresse d’une image</span><input value={f.image_url} onChange={set('image_url')} disabled={Boolean(file)} placeholder="https://… ou /media/photo.jpg" inputMode="url" /></label>
         </div>
         <div className="fieldRow">

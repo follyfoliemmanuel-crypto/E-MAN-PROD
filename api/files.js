@@ -3,6 +3,7 @@
 //   POST {action: 'confirm', id}                            vérifier le fichier reçu
 //   GET ?id=                     lien de téléchargement (redirection, 5 min), après contrôle des droits
 //   GET ?id=&inline=1            idem, affiché dans le navigateur (images seulement)
+//   GET ?id=&inline=1&direct=1   image d'origine par lien temporaire (secours de l'affichage)
 //   GET ?id=&info=1              informations sur le fichier (JSON)
 //   DELETE {id}                  supprimer (auteur ou admin)
 //   POST {action: 'cleanup'}     admin : effacer les envois abandonnés
@@ -59,7 +60,7 @@ export default handler({
     }
     const id = s.parse(s.uuid('Fichier'), q.id);
     const actor = actorOf(await currentUser(req));
-    const url = await files.downloadUrl(actor, id, { inline: q.inline === '1' });
+    const url = await files.downloadUrl(actor, id, { inline: q.inline === '1', direct: q.direct === '1' });
     if (q.info === '1') return send(res, 200, { url });
     res.statusCode = 302;
     res.setHeader('Location', url);

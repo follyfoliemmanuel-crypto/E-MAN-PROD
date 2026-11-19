@@ -1,5 +1,9 @@
 # Historique des versions et des vérifications
 
+## v3.3.1 — photos jusqu'à 50 Mo, photo de profil toujours affichée
+- **Photos jusqu'à 50 Mo** (réalisations, images du site, photo de profil) : réduites dans le navigateur avant l'envoi (2 560 px pour le site, 800 px pour le profil, orientation des téléphones respectée), pour tenir dans la limite de 10 Mo par image de l'offre gratuite de Cloudinary. Au-delà de 50 Mo : message clair.
+- **Photo de profil** : avant, une photo de téléphone (souvent 3 à 8 Mo) était refusée par la limite de 2 Mo. Elle est maintenant allégée automatiquement. Si Cloudinary refuse l'adresse optimisée, la photo d'origine est affichée par un lien temporaire ; en dernier recours, les initiales.
+
 ## v3.3.0 — carrousels automatiques, photos de profil fiables, valeurs de la base identiques en ligne
 - **Carrousel d'accueil** : défilement automatique permanent, sans bouton pause, y compris souris posée dessus ou appareil réglé sur « moins d'animations » ; flèches, points et glissement conservés.
 - **Cartes « Ce que nous réalisons pour vous »** : défilement continu et doux (≈ 30 px/s) en boucle sans fin ; arrêt le temps que la souris est sur une carte ou que la personne fait défiler à la main, puis reprise.

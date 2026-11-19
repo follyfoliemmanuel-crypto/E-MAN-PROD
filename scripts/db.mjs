@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { seedStatements } from '../src/content/seed.js';
+import { typeParsers } from '../api/_lib/db.js';
 import { migrate, migrationStatus, backup, isEmptyDatabase, ensureGitignored } from './lib/migrate.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -42,7 +43,7 @@ const url = process.env.DATABASE_URL;
 if (!url) fail('DATABASE_URL est vide. Copiez .env.example vers .env et renseignez-la.');
 
 const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);
-const client = new pg.Client({ connectionString: url, ssl: local ? false : { rejectUnauthorized: true } });
+const client = new pg.Client({ connectionString: url, ssl: local ? false : { rejectUnauthorized: true }, types: typeParsers(pg.types) });
 const db = {
   exec: (sql) => client.query(sql),
   rows: (sql, params) => client.query(sql, params).then((r) => r.rows),

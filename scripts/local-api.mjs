@@ -10,6 +10,7 @@ const ROUTES = [
   ...readdirSync(API_DIR)
     .filter((f) => f.endsWith('.js') && !f.startsWith('_'))
     .map((f) => [new RegExp(`^/api/${f.slice(0, -3)}/?$`), `/api/${f}`]),
+  [/^\/api\/auth\/google\/(callback)\/?$/, '/api/auth/[action].js', 'action'],
   [/^\/api\/auth\/([a-z-]+)\/?$/, '/api/auth/[action].js', 'action'],
 ];
 

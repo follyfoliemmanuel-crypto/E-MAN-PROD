@@ -24,7 +24,12 @@ import { mySessions, revokeMine } from '../_lib/services/security.js';
 import * as v from '../_lib/validate.js';
 import { claimGuestRequests, announceClient } from '../_lib/services/clients.js';
 
-const actionOf = (req) => req.query?.action || new URL(req.url, 'http://x').pathname.split('/').pop();
+// « /api/auth/google/callback » (adresse souvent saisie dans Google Cloud) = « google-callback ».
+const actionOf = (req) => {
+  const path = new URL(req.url, 'http://x').pathname.replace(/\/$/, '');
+  if (path.endsWith('/google/callback')) return 'google-callback';
+  return req.query?.action || path.split('/').pop();
+};
 // Sans service d'e-mails, en développement local, les liens s'affichent dans le terminal.
 const devMail = () => !mailConfigured() && !process.env.VERCEL;
 

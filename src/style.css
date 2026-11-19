@@ -1309,3 +1309,7 @@ details.spaceBlock > summary { cursor: pointer; }
   .logo img { width: 108px; height: 38px; }
   .headerActions .quoteBtn { padding: 0 12px; }
 }
+
+/* Défilement continu des cartes : pas d'aimantation pendant le mouvement automatique. */
+.cardTrack[data-loop] { scroll-snap-type: none; }
+.cardTrack[data-auto='true'] { scroll-behavior: auto; }

@@ -11,6 +11,7 @@ import {
 } from '../../lib/api.js';
 import { useLoad, Loading, ErrorBox, EmptyState, SectionHead, StatCard } from './ui.jsx';
 import { LimitHint } from '../../lib/limits.jsx';
+import { Avatar } from '../../components/Avatar.jsx';
 
 const size = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`);
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,.ai,.eps,.psd,.cdr,.zip';
@@ -501,10 +502,9 @@ export function SupportThread({ who, notify, side, onSent }) {
 export function AvatarEditor({ user, notify, onChange }) {
   const [busy, setBusy] = useState(false);
   const url = avatarUrl(user.avatar_file_id);
-  const initials = (user.first_name?.[0] || user.full_name?.[0] || '?') + (user.last_name?.[0] || '');
   return (
     <div className="avatarEditor">
-      {url ? <img className="avatar big" src={url} alt="Votre photo de profil" /> : <span className="avatar big" aria-hidden="true">{initials.toUpperCase()}</span>}
+      <Avatar user={user} size={88} className="big" alt={url ? 'Votre photo de profil' : ''} />
       <div>
         <label className={`btn btnGhost btnSmall fileBtn${busy ? ' busy' : ''}`}>
           {busy ? 'Envoi…' : url ? 'Changer la photo' : 'Ajouter une photo'}

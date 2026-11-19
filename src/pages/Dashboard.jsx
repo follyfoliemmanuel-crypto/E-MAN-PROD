@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { MEDIA_SLOTS, PLACEHOLDERS } from '../config.js';
 import { useCatalog } from '../lib/catalog.jsx';
+import { Avatar } from '../components/Avatar.jsx';
 import { CoursesAdmin, GalleryAdmin, PrestationsAdmin } from './admin.jsx';
 import { QuotesPanel, OrdersPanel, ProfilePanel } from './requests.jsx';
 import { SecurityPanel, TeamPanel } from './security.jsx';
@@ -94,14 +95,13 @@ export default function Dashboard() {
     );
   }
 
-  const initials = ((user.first_name?.[0] || user.full_name?.[0] || '?') + (user.last_name?.[0] || '')).toUpperCase();
   const label = sections.find(([k]) => k === current)?.[1];
   return (
     <ConfirmProvider>
       <main id="contenu" className="space">
         <aside className={`spaceNav${menuOpen ? ' open' : ''}`} aria-label="Menu de l’espace">
           <div className="spaceUser">
-            {user.avatar_file_id ? <img className="avatar" src={avatarUrl(user.avatar_file_id)} alt="" /> : <span className="avatar" aria-hidden="true">{initials}</span>}
+            <Avatar user={user} size={44} />
             <span><strong>{user.full_name}</strong><small>{isAdmin ? 'Administrateur' : user.role === 'staff' ? 'Équipe' : 'Client'}</small></span>
           </div>
           <nav>

@@ -1,5 +1,12 @@
 # Historique des versions et des vérifications
 
+## v3.3.0 — carrousels automatiques, photos de profil fiables, valeurs de la base identiques en ligne
+- **Carrousel d'accueil** : défilement automatique permanent, sans bouton pause, y compris souris posée dessus ou appareil réglé sur « moins d'animations » ; flèches, points et glissement conservés.
+- **Cartes « Ce que nous réalisons pour vous »** : défilement continu et doux (≈ 30 px/s) en boucle sans fin ; arrêt le temps que la souris est sur une carte ou que la personne fait défiler à la main, puis reprise.
+- **Photos de profil** : un seul composant partout (en-tête, menu, espace, profil), image ronde recadrée ; initiales si la photo ne se charge pas, jamais d'icône cassée.
+- **Base de données** : le vrai pilote (pg en local, Neon en ligne) renvoyait les grands nombres en texte et les dates en objets JavaScript ; ils sont maintenant convertis comme le code l'attend (montants, tailles de fichiers, dates des e-mails et des PDF). Tous les tests tournent désormais avec le vrai pilote.
+- **Google** : l'adresse de retour `/api/auth/google/callback` est acceptée en plus de `/api/auth/google-callback`.
+
 ## v3.2.2 — diagnostic de configuration, administrateur automatique, inscription Google d'abord
 - **`/api/auth/status`** (en ligne) et **`npm run check`** (sur le poste) : disent précisément ce qui est configuré, ce qui manque et pourquoi le site « ne voit pas » une variable (fichier `.env` non envoyé à Vercel, pas de redéploiement, valeur mal saisie).
 - **Plus de panne silencieuse** : si l'API ou la base ne répond pas, le site l'affiche (fenêtre de connexion, espace) au lieu de se comporter comme si rien n'était configuré.

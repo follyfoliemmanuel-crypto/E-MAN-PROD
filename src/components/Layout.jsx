@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Menu, X, MapPin, Phone, Mail, Clock3, MessageCircle, ChevronDown, ArrowRight, UserRound, LayoutDashboard, Bell, ShieldCheck, LogOut, LogIn } from 'lucide-react';
-import { avatarUrl } from '../lib/api.js';
+import { Avatar } from './Avatar.jsx';
 import { Link, usePath } from '../lib/router.jsx';
 import { BUSINESS, whatsappLink } from '../config.js';
 import { useApp } from '../context.js';
@@ -100,15 +100,6 @@ function FormationsMenu() {
 }
 
 const ROLE_LABEL = { admin: 'Administrateur', staff: 'Équipe', client: 'Client' };
-const initialsOf = (u) => ((u.first_name?.[0] || u.full_name?.[0] || '?') + (u.last_name?.[0] || '')).toUpperCase();
-
-/** Photo de profil, ou initiales à défaut. */
-function Avatar({ user, size = 36 }) {
-  return user.avatar_file_id
-    ? <img className="avatar" src={avatarUrl(user.avatar_file_id)} alt="" width={size} height={size} style={{ width: size, height: size }} />
-    : <span className="avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38 }}>{initialsOf(user)}</span>;
-}
-
 /** Non connecté : Connexion et Inscription, toujours visibles dans l'en-tête. */
 function AuthButtons() {
   const { openAuth } = useApp();

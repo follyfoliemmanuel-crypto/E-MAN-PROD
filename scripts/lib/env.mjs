@@ -18,11 +18,12 @@ export function loadEnv() {
 
 /** Client pg relié aux services de l'application (api/_lib/db.js). */
 export async function connectDb() {
+  const { typeParsers } = await import('../../api/_lib/db.js');
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL est vide (fichier .env ou secret GitHub).');
   const { default: pg } = await import('pg');
   const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url) || url.includes('host=/');
-  const client = new pg.Client({ connectionString: url, ssl: local ? false : { rejectUnauthorized: true } });
+  const client = new pg.Client({ connectionString: url, ssl: local ? false : { rejectUnauthorized: true }, types: typeParsers(pg.types) });
   await client.connect();
   const { setQueryRunner } = await import('../../api/_lib/db.js');
   setQueryRunner((text, params) => client.query(text, params).then((r) => r.rows));

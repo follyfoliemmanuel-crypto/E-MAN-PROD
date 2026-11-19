@@ -65,7 +65,7 @@ Aucun identifiant n'est fourni : ils doivent être créés par E-MAN PROD, avec 
    - origines JavaScript : `https://www.emanprod.com` (et `http://localhost:5173` pour les essais) ;
    - URI de redirection : `https://www.emanprod.com/api/auth/google-callback` (et `http://localhost:5173/api/auth/google-callback`).
 4. Copier l'ID et le secret dans `GOOGLE_CLIENT_ID` et `GOOGLE_CLIENT_SECRET`, vérifier `SITE_URL`, redéployer.
-5. Le bouton « Continuer avec Google » n'apparaît que si les deux variables sont présentes.
+5. Les boutons « Se connecter avec Google » et « S'inscrire avec Google » sont toujours affichés dans les fenêtres de connexion et d'inscription. Tant que les deux variables manquent, ils sont grisés avec la mention « bientôt disponible ». **Espace → Paramètres → Connexion Google** indique l'état, et donne les deux adresses à copier dans Google Cloud.
 
 Fonctionnement : OpenID Connect avec PKCE, `state` et `nonce` à usage unique (10 minutes) ; signature du jeton vérifiée avec les clés publiques de Google. Un compte existant avec la même adresse est relié ; si cette adresse n'avait jamais été confirmée, son mot de passe est retiré et ses sessions fermées (protection contre un compte créé avec l'adresse d'autrui).
 

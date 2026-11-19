@@ -4,7 +4,7 @@
 //   GET ?support=me | ?support=<client>  fil d'assistance (le client : le sien ; l'équipe « support » : tous)
 //   GET ?support=threads                 équipe : liste des conversations d'assistance
 //   POST {support: true, body}           client : écrire à l'assistance ; {support_user_id, body} : l'équipe répond
-//   GET ?notifications=1 [&unread=1]     mes notifications
+//   GET ?notifications=1 [&unread=1] [&limit=n]  mes notifications
 //   POST {action: 'read', ids?}          marquer comme lues (toutes si ids absent) ; {action: 'unread', ids}
 //   GET ?announcements=1                 annonces publiées ; POST {action: 'announce', …} : admin
 import { z } from 'zod';
@@ -30,7 +30,8 @@ export default handler({
       const f = s.parse(z.object({
         category: s.oneOf(inbox.NOTIFICATION_CATEGORIES, 'Rubrique').optional(),
         before: z.string().datetime({ offset: true, message: 'Date invalide.' }).optional(),
-      }), { category: q.category || undefined, before: q.before || undefined });
+        limit: z.coerce.number().int().min(1).max(100).optional(),
+      }), { category: q.category || undefined, before: q.before || undefined, limit: q.limit || undefined });
       return send(res, 200, await inbox.listNotifications(actor, { unread: q.unread === '1', ...f }));
     }
     if (q.announcements === '1') return send(res, 200, { announcements: await inbox.listAnnouncements({ forClients: actor.role === 'client' }) });

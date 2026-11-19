@@ -48,7 +48,7 @@ src/config.js, src/routes-meta.js, src/pages/, src/components/, src/style.css, p
 | Modèle demandé | Table | Remarques |
 |---|---|---|
 | User, Session, VerificationToken | `users`, `sessions`, `verification_tokens` | mots de passe scrypt, jetons hachés |
-| Account | `accounts` | prête pour une connexion Google/Facebook plus tard ; non utilisée aujourd'hui |
+| Account | `accounts` | comptes Google reliés (connexion « Se connecter avec Google ») |
 | ClientProfile | `client_profiles` | type de client, entreprise, adresse, ville, WhatsApp, moyen de contact, note interne |
 | Quote, QuoteItem | `quotes`, `quote_items` | numéro DV-AAAA-NNNNN, plusieurs prestations, prix, remise, validité, dates |
 | Order, OrderItem | `orders`, `order_items` | numéro CMD-AAAA-NNNNN unique, une commande par devis au plus, paiement |

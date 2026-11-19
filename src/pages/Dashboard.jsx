@@ -52,23 +52,16 @@ function readLocation() {
 }
 
 export default function Dashboard() {
-  const { user, ready, openAuth, logout, notify, setUser } = useApp();
-  const [loc, setLoc] = useState(readLocation);
+  const { user, ready, openAuth, logout, notify, setUser, spaceRequest, unread, refreshUnread } = useApp();
+  const [loc, setLoc] = useState(() => (spaceRequest ? { section: spaceRequest.section, params: {} } : readLocation()));
   const [menuOpen, setMenuOpen] = useState(false);
   const [mainEl, setMainEl] = useState(null);
   useStackedTables(mainEl);
-  const [unread, setUnread] = useState(0);
   const isClient = !user || user.role === 'client';
   const isAdmin = user?.role === 'admin';
   const can = (p) => isAdmin || (user?.role === 'staff' && (user.permissions || []).includes(p));
   const sections = isClient ? CLIENT_SECTIONS : TEAM_SECTIONS.filter(([, , , perm]) => !perm || (perm === 'admin' ? isAdmin : can(perm)));
   const current = sections.find(([k]) => k === loc.section)?.[0] || sections[0][0];
-
-  const refreshUnread = useCallback(async () => {
-    if (!user || DEMO) return;
-    try { setUnread((await space.notifications()).unread); } catch { /* sans gravité */ }
-  }, [user]);
-  useEffect(() => { refreshUnread(); const t = setInterval(refreshUnread, 60000); return () => clearInterval(t); }, [refreshUnread]);
 
   const go = useCallback((section, params = {}) => {
     setLoc({ section, params });
@@ -78,14 +71,23 @@ export default function Dashboard() {
     window.scrollTo({ top: 0 });
   }, []);
 
+  // Rubrique demandée depuis le menu du profil (en-tête), y compris quand l'espace est déjà ouvert.
+  useEffect(() => {
+    if (spaceRequest) go(spaceRequest.section || sections[0][0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spaceRequest?.n]);
+
   if (!ready) return <main id="contenu" className="wrap dash"><Loading /></main>;
   if (!user) {
     return (
       <main id="contenu">
         <header className="pageHead wrap">
           <h1 className="pageTitle">Espace client</h1>
-          <p className="pageLead">Connectez-vous pour suivre vos devis, vos commandes et vos inscriptions.</p>
-          <button type="button" className="btn btnPrimary" onClick={openAuth}>Se connecter</button>
+          <p className="pageLead">Connectez-vous pour suivre vos devis, vos commandes, vos factures et vos inscriptions.</p>
+          <div className="authCtas">
+            <button type="button" className="btn btnPrimary" onClick={() => openAuth('login')}>Se connecter</button>
+            <button type="button" className="btn btnGhost" onClick={() => openAuth('signup')}>Créer un compte</button>
+          </div>
         </header>
       </main>
     );

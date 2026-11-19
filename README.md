@@ -1,4 +1,4 @@
-# E-MAN PROD — site et plateforme de gestion (v3.0)
+# E-MAN PROD — site et plateforme de gestion (v3.1)
 
 *E-man Prod, la référence !* — Imprimerie, création graphique, sérigraphie, enseignes, formation professionnelle et informatique. Siège : Nouveau Marché de Baguida, Lomé (Togo). Annexe : Agbavi, Yésuvito. emanprod3@gmail.com
 

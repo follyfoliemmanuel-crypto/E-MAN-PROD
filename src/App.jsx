@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { AppContext } from './context.js';
-import { auth } from './lib/api.js';
+import { auth, space, DEMO } from './lib/api.js';
 import { usePath, navigate, scrollToHash } from './lib/router.jsx';
 import { useSeo } from './lib/seo.js';
 import { MediaProvider } from './lib/media.jsx';
@@ -59,10 +59,24 @@ export default function App() {
   useSeo(route.dynamic ? null : path);
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
-  const [modal, setModal] = useState(null); // { type: 'quote' | 'auth' | 'password', service?, token? }
+  const [modal, setModal] = useState(null); // { type: 'quote' | 'auth' | 'password', service?, token?, mode? }
   const [toast, setToast] = useState(null);
 
   const [methods, setMethods] = useState({ google: false, mail: false });
+  // Rubrique de l'espace demandée depuis le menu du profil : { section, n }.
+  const [spaceRequest, setSpaceRequest] = useState(null);
+  // Notifications non lues : partagées entre l'en-tête (pastille du profil) et l'espace.
+  const [unread, setUnread] = useState(0);
+  const refreshUnread = useCallback(async () => {
+    if (!user || DEMO) { setUnread(0); return; }
+    try { setUnread((await space.notifications({ limit: 1 })).unread); } catch { /* sans gravité */ }
+  }, [user]);
+  useEffect(() => {
+    refreshUnread();
+    if (!user) return undefined;
+    const t = setInterval(() => { if (document.visibilityState === 'visible') refreshUnread(); }, 60000);
+    return () => clearInterval(t);
+  }, [refreshUnread, user]);
   // Coordonnées modifiées dans l'admin : appliquées à tout le site (re-rendu complet).
   const [, setContentVersion] = useState(0);
   const applyBusiness = useCallback((content) => {
@@ -97,7 +111,16 @@ export default function App() {
           setUser(r.user);
           setMethods({ google: Boolean(r.google), mail: Boolean(r.mail) });
           if (google === 'google' && r.user) notify('Vous êtes connecté avec Google.');
-          if (google === 'google-echec') notify('La connexion avec Google n’a pas abouti. Réessayez, ou connectez-vous avec votre e-mail.', 'error');
+          const GOOGLE_ERRORS = {
+            'google-echec': 'La connexion avec Google n’a pas abouti. Réessayez, ou connectez-vous avec votre e-mail.',
+            'google-annule': 'Connexion avec Google annulée.',
+            'google-indisponible': 'La connexion avec Google n’est pas encore activée. Utilisez votre adresse e-mail.',
+            'google-limite': 'Trop de tentatives de connexion. Réessayez dans quelques minutes.',
+          };
+          if (GOOGLE_ERRORS[google]) {
+            notify(GOOGLE_ERRORS[google], 'error');
+            if (!r.user) setModal({ type: 'auth', mode: 'login' });
+          }
         }
       } catch (e) {
         notify(e.message, 'error');
@@ -116,15 +139,24 @@ export default function App() {
     ready,
     methods,
     notify,
+    unread,
+    refreshUnread,
+    spaceRequest,
+    /** Ouvre l'espace sur une rubrique (accueil si vide). */
+    openSpace: (section = null) => {
+      setSpaceRequest({ section, n: Date.now() });
+      if (window.location.pathname !== '/espace') navigate('/espace');
+    },
     openQuote: (service = '') => setModal({ type: 'quote', service }),
-    openAuth: () => setModal({ type: 'auth' }),
+    /** mode : 'login' (par défaut) ou 'signup'. */
+    openAuth: (mode = 'login') => setModal({ type: 'auth', mode: mode === 'signup' ? 'signup' : 'login' }),
     logout: async () => {
       try { await auth.logout(); } catch { /* la session expirera d'elle-même */ }
       setUser(null);
       navigate('/');
       notify('Vous êtes déconnecté.');
     },
-  }), [user, ready, notify, methods]);
+  }), [user, ready, notify, methods, unread, refreshUnread, spaceRequest]);
 
   const onAuthenticated = (u) => {
     setUser(u);
@@ -133,7 +165,7 @@ export default function App() {
   };
 
   const { Page } = route;
-  const labels = { quote: 'Demander un devis', auth: 'Espace client', password: 'Nouveau mot de passe' };
+  const labels = { quote: 'Demander un devis', auth: modal?.mode === 'signup' ? 'Créer un compte' : 'Se connecter', password: 'Nouveau mot de passe' };
 
   return (
     <AppContext.Provider value={ctx}>
@@ -156,6 +188,8 @@ export default function App() {
               {modal.type === 'quote' && <QuoteForm initialService={modal.service} onClose={close} intro="Décrivez votre projet : nous vous rappelons avec un prix et un délai." />}
               {modal.type === 'auth' && (
                 <AuthForm
+                  key={modal.mode}
+                  initialMode={modal.mode}
                   notify={notify}
                   google={methods.google}
                   onDone={onAuthenticated}

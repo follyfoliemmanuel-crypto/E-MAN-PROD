@@ -425,8 +425,9 @@ select.tag { border-width: 1.5px; }
   .topBarRow { justify-content: flex-end; }
 }
 
-@media (max-width: 900px) {
-  .topBar, .navDesktop { display: none; }
+/* Menu principal replié (tablettes) : laisse la place à Devis, Connexion et Inscription. */
+@media (max-width: 1100px) {
+  .navDesktop { display: none; }
   .headerActions { margin-left: auto; }
   .menuToggle { display: grid; }
   .navMobile {
@@ -445,6 +446,10 @@ select.tag { border-width: 1.5px; }
   .navMobileSub { list-style: none; margin: 0; padding: 4px 0 10px 14px; border-bottom: 1px solid var(--rule); }
   .navMobileSub a { display: block; padding: 8px 0; color: var(--muted); text-decoration: none; }
   .navMobile .navMobileWa { display: flex; align-items: center; gap: 10px; color: var(--wa); border-bottom: 0; font-size: 1rem; }
+}
+
+@media (max-width: 900px) {
+  .topBar { display: none; }
   .audiences { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }
   .ctaInner { grid-template-columns: 1fr; }
@@ -1189,3 +1194,118 @@ details.spaceBlock > summary { cursor: pointer; }
 /* Place des commandes du diaporama réservée dès le premier affichage (évite un décalage). */
 .heroTheme { min-height: 1.5em; }
 @media (max-width: 900px) { .heroControls { min-height: 109px; } }
+
+/* ---------- Compte dans l'en-tête (v3.1) ---------- */
+.xlHide { display: none; }
+.btnOutlineBlue { border-color: var(--blue); color: var(--blue); background: #fff; }
+.btnOutlineBlue:hover:not(:disabled) { background: var(--blue); color: #fff; }
+.authButtons { display: flex; align-items: center; gap: 6px; }
+.authLogin {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 14px; border-radius: 8px;
+  border: 0; background: none; color: var(--ink); font-weight: 600; font-size: .95rem; cursor: pointer;
+}
+.authLogin:hover { background: var(--plate); color: var(--blue); }
+.authPlaceholder { display: block; width: 210px; height: 44px; }
+
+.accountMenu { position: relative; }
+.accountBtn {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 48px; padding: 4px 10px 4px 4px; border-radius: 999px;
+  border: 1px solid var(--rule); background: #fff; color: var(--ink); font-weight: 600; cursor: pointer; transition: border-color .18s, background-color .18s;
+}
+.accountBtn:hover, .accountBtn[aria-expanded='true'] { border-color: #c9d0e3; background: var(--plate); }
+.accountBtn[aria-expanded='true'] .chev { transform: rotate(180deg); }
+.accountAvatar { position: relative; display: inline-grid; }
+.accountAvatar .badgeCount { position: absolute; top: -7px; right: -9px; min-width: 18px; height: 18px; padding: 0 5px; font-size: .75rem; box-shadow: 0 0 0 2px #fff; }
+.accountName { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.accountPanel {
+  position: absolute; right: 0; top: calc(100% + 10px); width: 300px; padding: 8px; border-radius: var(--radius); z-index: 40;
+  background: #fff; box-shadow: 0 24px 60px -18px rgba(15, 27, 61, .35), 0 0 0 1px var(--rule);
+  opacity: 0; visibility: hidden; transform: translateY(-6px); transition: opacity .18s, transform .22s var(--ease), visibility 0s .22s;
+}
+.accountPanel[data-open='true'] { opacity: 1; visibility: visible; transform: none; transition: opacity .18s, transform .22s var(--ease); }
+.accountHead { display: flex; align-items: center; gap: 12px; padding: 10px 10px 14px; border-bottom: 1px solid var(--rule); margin-bottom: 6px; }
+.accountHead > span { display: grid; min-width: 0; }
+.accountHead strong, .accountHead small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.accountHead small { color: var(--muted); font-size: .82rem; }
+.accountHead .accountRole { color: var(--blue); font-weight: 600; }
+.accountPanel ul { list-style: none; margin: 0; padding: 0; }
+.accountPanel li button, .accountLogout {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 0 10px; border: 0; border-radius: 8px;
+  background: none; color: var(--ink); font-size: .95rem; text-align: left; cursor: pointer;
+}
+.accountPanel li button:hover, .accountLogout:hover { background: var(--plate); }
+.accountPanel li button svg, .accountLogout svg { color: var(--muted); flex-shrink: 0; }
+.accountPanel li .badgeCount { margin-left: auto; }
+.accountLogout { margin-top: 6px; border-top: 1px solid var(--rule); border-radius: 0 0 8px 8px; padding-top: 2px; color: var(--red); }
+.accountLogout svg { color: var(--red) !important; }
+
+/* Menu mobile : accès au compte en tête de liste */
+.navMobileAuth { display: none; }
+.navMobileAccount { display: none; }
+
+/* Fenêtre de connexion : onglets Connexion / Inscription */
+.authTabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 10px; background: var(--plate); }
+.authTabs button { min-height: 44px; border: 0; border-radius: 8px; background: none; font-weight: 600; color: var(--muted); cursor: pointer; }
+.authTabs button[aria-selected='true'] { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(15, 27, 61, .12); }
+.googleSoon { margin-top: -4px; text-align: center; text-wrap: balance; }
+.authCtas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+
+@media (min-width: 1101px) {
+  .headerBar { gap: 20px; }
+  .navDesktop { gap: 0; }
+  .navItem { padding: 9px 12px; }
+}
+@media (max-width: 1320px) and (min-width: 1101px) {
+  .xlOnly { display: none; }
+  .xlHide { display: inline; }
+  .navItem { padding: 9px 9px; }
+  .logo img { width: 136px; height: 46px; }
+  .accountName { display: none; }
+  .accountBtn { padding-right: 8px; }
+  .authLogin svg { display: none; }
+  .authLogin { padding: 0 10px; }
+}
+@media (max-width: 1100px) {
+  .navMobileAuth { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+  .navMobileAccount { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+  .navMobileAccount > span { display: grid; }
+  .navMobileAccount small { color: var(--muted); }
+}
+@media (max-width: 1100px) and (min-width: 601px) {
+  .navMobile { max-height: calc(100dvh - 113px); }
+}
+@media (max-width: 600px) {
+  .authSignup { display: none; }
+  .authPlaceholder { width: 44px; }
+  .accountBtn { padding: 3px; border-color: transparent; }
+  .accountBtn .chev, .accountName { display: none; }
+  .accountPanel { position: fixed; left: 12px; right: 12px; top: 72px; width: auto; }
+  .headerActions { gap: 4px; }
+}
+@media (max-width: 600px) {
+  .logo img { width: 112px; height: 40px; }
+  .authLogin { padding: 0 8px; gap: 6px; border: 1.5px solid var(--blue); color: var(--blue); }
+  .headerActions .quoteBtn { padding: 0 14px; }
+}
+@media (max-width: 389px) {
+  .authLogin { width: 44px; padding: 0; justify-content: center; }
+  .authLogin span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .authLogin svg { display: block; }
+}
+.navItem, .authLogin, .quoteBtn { white-space: nowrap; }
+.logo { flex-shrink: 0; }
+.headerActions { flex-shrink: 0; }
+@media (max-width: 760px) {
+  .xlOnly { display: none; }
+  .xlHide { display: inline; }
+}
+@media (max-width: 680px) and (min-width: 601px) {
+  .authLogin svg { display: none; }
+  .authLogin { padding: 0 8px; }
+  .headerActions { gap: 4px; }
+  .headerActions .btnSmall { padding: 0 14px; }
+}
+@media (max-width: 359px) {
+  .logo img { width: 108px; height: 38px; }
+  .headerActions .quoteBtn { padding: 0 12px; }
+}

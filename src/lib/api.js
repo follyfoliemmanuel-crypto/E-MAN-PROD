@@ -395,6 +395,7 @@ export const space = {
   verify: (code) => call('/api/documents?verify=' + encodeURIComponent(code)),
   // Paramètres et e-mails (admin)
   emailStatus: () => call('/api/manage', { method: 'POST', body: { action: 'email.status' } }).then((r) => r.result),
+  authStatus: () => (DEMO ? Promise.resolve({ google: { configured: false, secret: false, client_id: null, origin: window.location.origin, redirect_uri: `${window.location.origin}/api/auth/google-callback`, linked_accounts: 0 } }) : call('/api/manage', { method: 'POST', body: { action: 'auth.status' } }).then((r) => r.result)),
   emailPreview: (template, subject, intro) => call('/api/manage', { method: 'POST', body: { action: 'email.preview', template, subject, intro } }).then((r) => r.result),
   emailTest: (template) => call('/api/manage', { method: 'POST', body: { action: 'email.test', template } }).then((r) => r.result),
   saveSetting: (key, value) => call('/api/manage', { method: 'POST', body: { action: 'setting.update', key, value } }),

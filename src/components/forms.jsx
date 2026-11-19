@@ -231,28 +231,41 @@ const GoogleMark = () => (
   </svg>
 );
 
-export function AuthForm({ onDone, notify, startDemo, google = false }) {
-  const [mode, setMode] = useState('login');
+/**
+ * Bouton Google, toujours présent en connexion et en inscription :
+ * - configuré : simple lien, la redirection est préparée par le serveur (state, nonce, PKCE) ;
+ * - pas encore configuré : grisé, avec une mention claire (jamais un bouton qui échoue) ;
+ * - démonstration : ouvre le tableau de bord fictif, comme le formulaire.
+ */
+function GoogleButton({ mode, available, onDemo }) {
+  const text = mode === 'signup' ? 'S’inscrire avec Google' : 'Se connecter avec Google';
+  if (DEMO) return <button type="button" className="btn btnGoogle btnBlock" onClick={onDemo}><GoogleMark /> {text}</button>;
+  if (available) return <a className="btn btnGoogle btnBlock" href="/api/auth/google?return=%2Fespace"><GoogleMark /> {text}</a>;
+  return (
+    <>
+      <button type="button" className="btn btnGoogle btnBlock" disabled aria-describedby="google-soon"><GoogleMark /> {text}</button>
+      <p id="google-soon" className="hint googleSoon">Connexion Google bientôt disponible. En attendant, utilisez votre e‑mail ci-dessous.</p>
+    </>
+  );
+}
+
+export function AuthForm({ onDone, notify, startDemo, google = false, initialMode = 'login' }) {
+  const [mode, setMode] = useState(initialMode === 'signup' ? 'signup' : 'login');
   const [f, set] = useForm({ first_name: '', last_name: '', phone: '', email: '', password: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
 
-  if (DEMO) {
-    return (
-      <div className="form">
-        <h2 className="formTitle">Espace client</h2>
-        <p className="muted">Ce site est en mode démonstration : les comptes seront actifs une fois la base Neon branchée. Vous pouvez parcourir le tableau de bord avec des données fictives.</p>
-        <button type="button" className="btn btnPrimary btnBlock" onClick={startDemo}>Ouvrir le tableau de bord de démonstration</button>
-      </div>
-    );
-  }
-
   async function onSubmit(e) {
     e.preventDefault();
-    setBusy(true);
     setError('');
     setInfo('');
+    if (DEMO) {
+      if (mode === 'forgot') setInfo('Mode démonstration : aucun e-mail n’est envoyé.');
+      else startDemo();
+      return;
+    }
+    setBusy(true);
     try {
       if (mode === 'forgot') {
         const r = await auth.forgot({ email: f.email });
@@ -275,15 +288,22 @@ export function AuthForm({ onDone, notify, startDemo, google = false }) {
     }
   }
 
+  const switchTo = (m) => { setMode(m); setError(''); setInfo(''); };
   const titles = { login: 'Se connecter', signup: 'Créer un compte', forgot: 'Mot de passe oublié' };
   return (
     <form className="form" onSubmit={onSubmit}>
+      {mode !== 'forgot' && (
+        <div className="authTabs" role="tablist" aria-label="Connexion ou inscription">
+          <button type="button" role="tab" aria-selected={mode === 'login'} onClick={() => switchTo('login')}>Connexion</button>
+          <button type="button" role="tab" aria-selected={mode === 'signup'} onClick={() => switchTo('signup')}>Inscription</button>
+        </div>
+      )}
       <h2 className="formTitle">{titles[mode]}</h2>
-      {mode === 'signup' && <p className="muted formIntro">Utilisez l’adresse e-mail de vos demandes : elles apparaîtront dans votre espace une fois l’adresse confirmée.</p>}
-      {google && mode !== 'forgot' && (
+      {DEMO && <p className="formInfo">Mode démonstration : les comptes seront actifs une fois la base de données branchée. Chaque bouton ouvre un tableau de bord rempli de données fictives.</p>}
+      {mode === 'signup' && <p className="muted formIntro">Suivez vos devis, commandes, factures et inscriptions aux formations. Utilisez l’adresse e-mail de vos demandes : elles apparaîtront dans votre espace.</p>}
+      {mode !== 'forgot' && (
         <>
-          {/* Lien simple : la redirection vers Google est préparée par le serveur (state, nonce, PKCE). */}
-          <a className="btn btnGoogle btnBlock" href="/api/auth/google?return=%2Fespace"><GoogleMark /> Continuer avec Google</a>
+          <GoogleButton mode={mode} available={google} onDemo={startDemo} />
           <p className="orLine"><span>ou avec votre e-mail</span></p>
         </>
       )}
@@ -306,9 +326,8 @@ export function AuthForm({ onDone, notify, startDemo, google = false }) {
       {info && <p className="formInfo" role="status">{info}</p>}
       <Submit busy={busy}>{mode === 'login' ? 'Se connecter' : mode === 'signup' ? 'Créer mon compte' : 'Recevoir le lien'}</Submit>
       <div className="authSwitch">
-        {mode !== 'login' && <button type="button" className="linkBtn" onClick={() => setMode('login')}>J’ai déjà un compte</button>}
-        {mode !== 'signup' && <button type="button" className="linkBtn" onClick={() => setMode('signup')}>Créer un compte</button>}
-        {mode === 'login' && <button type="button" className="linkBtn" onClick={() => setMode('forgot')}>Mot de passe oublié</button>}
+        {mode === 'login' && <button type="button" className="linkBtn" onClick={() => switchTo('forgot')}>Mot de passe oublié</button>}
+        {mode === 'forgot' && <button type="button" className="linkBtn" onClick={() => switchTo('login')}>Retour à la connexion</button>}
       </div>
     </form>
   );

@@ -1,5 +1,13 @@
 # Historique des versions et des vérifications
 
+## v3.1 — connexion et inscription dans l'en-tête
+- **En-tête** : boutons « Connexion » et « Inscription » visibles sur toutes les pages. Sur téléphone, « Connexion » reste dans l'en-tête et les deux boutons sont en tête du menu. Une fois connecté, la photo de profil (ou les initiales) remplace ces boutons, avec la pastille des notifications non lues et un menu : Mon espace / Tableau de bord, Notifications, Mon profil, Sécurité, Se déconnecter.
+- **Google** : « Se connecter avec Google » et « S'inscrire avec Google » sont toujours affichés. Tant que les identifiants ne sont pas configurés, le bouton est grisé avec la mention « bientôt disponible ». L'adresse `/api/auth/google` ne renvoie plus de page d'erreur : elle ramène sur le site avec un message (non configuré, annulé, trop de tentatives).
+- **Paramètres → Connexion Google** (admin) : état de la configuration, nombre de comptes reliés, et les deux adresses à déclarer dans Google Cloud. Le secret n'est jamais affiché.
+- **Fenêtre de connexion** : onglets Connexion / Inscription. En démonstration, elle montre les vrais formulaires et précise qu'ils ouvrent un tableau de bord fictif.
+- **Menu principal** : replié en dessous de 1 100 px de large (tablettes) pour laisser la place aux boutons.
+- **Vérifié** : 85 contrôles dans le navigateur, à 9 tailles d'écran de 360 à 1 440 px, pour les comptes déconnecté, CLIENT, STAFF et ADMIN, avec Google configuré, non configuré et en démonstration ; plus la non-régression complète.
+
 ## Ce qui a été vérifié (v2.8)
 - **Notifications, e-mails, documents** : 147 tests d'API contre un faux fournisseur d'e-mails, avec des comptes ADMIN, STAFF et CLIENT. Ils couvrent chaque événement, le contenu des e-mails et des PDF (lus avec pdftotext), les factures et reçus, les présences et attestations, les annonces, les paramètres, ainsi que les permissions et l'isolement des clients.
 - **Envois refusés** : adresse refusée, réponse sans identifiant, clé invalide, fournisseur injoignable et fournisseur non configuré ne sont jamais notés « envoyé » (7 tests Resend et Brevo).

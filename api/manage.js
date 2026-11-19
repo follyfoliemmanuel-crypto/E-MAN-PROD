@@ -8,6 +8,7 @@
 //   portfolio_category.create / portfolio_category.update
 //   testimonial.update / testimonial.delete
 //   setting.update                         réglages du site (coordonnées, textes)
+//   auth.status                            état de la connexion Google (admin)
 // Anciens noms (v2.4), toujours acceptés : course.update, prestation.update, gallery.*.
 import { z } from 'zod';
 import { handler, send, readJson, HttpError } from './_lib/http.js';
@@ -17,6 +18,8 @@ import { query, one } from './_lib/db.js';
 import { TEMPLATES, renderEmail } from './_lib/emails.js';
 import { deliverEmail, mailStatus } from './_lib/mail.js';
 import { WHATSAPP_PURPOSES, SOCIALS } from './_lib/settings.js';
+import { googleConfigured, redirectUri } from './_lib/google.js';
+import { siteUrl } from './_lib/http.js';
 import * as s from './_lib/schemas.js';
 import * as content from './_lib/services/content.js';
 
@@ -224,6 +227,22 @@ const actions = {
     const r = await deliverEmail({ to: me.email, userId: a.id, template: p.template, ...mail, subject: `[Essai] ${mail.subject}` });
     return { ...r, to: maskEmail(me.email) };
   },
+  // Modes de connexion : état de la configuration Google (aucun secret renvoyé). Admin.
+  'auth.status': async (a, b, req) => {
+    adminOnly(a);
+    const id = process.env.GOOGLE_CLIENT_ID || '';
+    const [{ n }] = await query(`select count(*)::int as n from accounts where provider = 'google'`);
+    return {
+      google: {
+        configured: googleConfigured(),
+        client_id: id ? `${id.slice(0, 8)}…${id.slice(-27)}` : null,
+        secret: Boolean(process.env.GOOGLE_CLIENT_SECRET),
+        origin: siteUrl(req),
+        redirect_uri: redirectUri(req),
+        linked_accounts: n,
+      },
+    };
+  },
   'setting.update': (a, b) => {
     // Coordonnées et textes officiels : réservés aux administrateurs.
     if (a.role !== 'admin') throw new HttpError(403, 'Seul un administrateur peut modifier les réglages du site.');
@@ -249,6 +268,6 @@ export default handler({
     const fn = actions[body.action];
     if (!fn) throw new HttpError(400, 'Action inconnue.');
     const actor = actorOf(await requirePermission(req, permissionOf(body.action)));
-    send(res, 200, { result: await fn(actor, body) });
+    send(res, 200, { result: await fn(actor, body, req) });
   },
 });

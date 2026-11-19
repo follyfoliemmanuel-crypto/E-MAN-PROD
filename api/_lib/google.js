@@ -49,8 +49,15 @@ function redirect(res, location) {
 }
 
 export async function startGoogle(req, res) {
-  if (!googleConfigured()) throw new HttpError(503, 'La connexion avec Google n’est pas encore activée sur ce site.');
-  await rateLimit(`google:ip:${clientIp(req)}`, 30, 15);
+  // Cette adresse est ouverte par un simple lien (navigation) : en cas de refus, on
+  // revient sur le site avec un message lisible plutôt qu'une page d'erreur JSON.
+  if (!googleConfigured()) return redirect(res, '/espace?connexion=google-indisponible');
+  try {
+    await rateLimit(`google:ip:${clientIp(req)}`, 30, 15);
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 429) return redirect(res, '/espace?connexion=google-limite');
+    throw e;
+  }
   const state = b64url(randomBytes(32));
   const nonce = b64url(randomBytes(32));
   const verifier = b64url(randomBytes(48));
@@ -155,13 +162,13 @@ export async function accountForGoogle(req, profile) {
 
 export async function googleCallback(req, res, { onLogin } = {}) {
   const q = req.query || {};
-  const fail = async (reason, data = {}) => {
+  const fail = async (reason, data = {}, code = 'google-echec') => {
     await logSecurity(req, 'auth.google_failed', { data: { reason, ...data } });
     appendCookie(res, cookie(req, STATE_COOKIE, '', 0, { path: '/api/auth' }));
-    redirect(res, '/espace?connexion=google-echec');
+    redirect(res, `/espace?connexion=${code}`);
   };
-  if (!googleConfigured()) return fail('non configuré');
-  if (q.error) return fail('refus ou annulation sur Google', { error: String(q.error).slice(0, 60) });
+  if (!googleConfigured()) return fail('non configuré', {}, 'google-indisponible');
+  if (q.error) return fail('refus ou annulation sur Google', { error: String(q.error).slice(0, 60) }, q.error === 'access_denied' ? 'google-annule' : 'google-echec');
   const cookieState = readCookie(req, STATE_COOKIE);
   const a = Buffer.from(String(q.state || ''));
   const b = Buffer.from(String(cookieState || ''));

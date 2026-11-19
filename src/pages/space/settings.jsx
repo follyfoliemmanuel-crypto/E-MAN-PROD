@@ -10,7 +10,7 @@ import { SettingForm, BusinessForm } from './team.jsx';
 
 const TABS = [
   ['coordonnees', 'Coordonnées'], ['whatsapp', 'WhatsApp'], ['reseaux', 'Réseaux sociaux'], ['legal', 'Informations légales'],
-  ['documents', 'Devis et factures'], ['emails', 'E-mails'], ['notifications', 'Notifications'],
+  ['documents', 'Devis et factures'], ['emails', 'E-mails'], ['notifications', 'Notifications'], ['connexion', 'Connexion Google'],
 ];
 
 export function SettingsAdmin({ notify, params = {}, go }) {
@@ -32,7 +32,7 @@ export function SettingsAdmin({ notify, params = {}, go }) {
   const c = data?.content || {};
   return (
     <>
-      <SectionHead title="Paramètres" lead="Coordonnées, numéros WhatsApp, mentions légales, documents et e-mails. Les changements s’appliquent au site et aux PDF dès l’enregistrement." />
+      <SectionHead title="Paramètres" lead="Coordonnées, numéros WhatsApp, mentions légales, documents, e-mails et connexion Google. Les changements s’appliquent au site et aux PDF dès l’enregistrement." />
       <div className="tabBar" role="tablist" aria-label="Rubriques des paramètres">
         {TABS.map(([k, label]) => (
           <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => go('parametres', { onglet: k })}>{label}</button>
@@ -60,6 +60,7 @@ export function SettingsAdmin({ notify, params = {}, go }) {
           )}
           {tab === 'documents' && <DocumentsForm value={c.documents || {}} onSave={(v) => save('documents', v)} />}
           {tab === 'emails' && <EmailsAdmin notify={notify} overrides={c.email_templates || {}} onSave={(v) => save('email_templates', v)} />}
+          {tab === 'connexion' && <GoogleStatus notify={notify} />}
           {tab === 'notifications' && <NotificationsForm value={c.notifications || {}} business={c.business || {}} onSave={(v) => save('notifications', v)} />}
         </div>
       )}
@@ -151,6 +152,40 @@ function NotificationsForm({ value, business, onSave }) {
       </fieldset>
       <button className="btn btnPrimary btnSmall">Enregistrer</button>
     </form>
+  );
+}
+
+/**
+ * Connexion Google : état lu sur le serveur. Les identifiants restent dans les
+ * variables d'environnement (jamais saisis ni affichés dans le navigateur).
+ */
+function GoogleStatus({ notify }) {
+  const [{ data, error, loading }, reload] = useLoad(() => space.authStatus(), []);
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  const g = data.google;
+  const copy = async (v) => {
+    try { await navigator.clipboard.writeText(v); notify('Copié.'); } catch { notify('Copie impossible : sélectionnez le texte à la main.', 'error'); }
+  };
+  return (
+    <section className={`spaceBlock mailStatus ${g.configured ? 'ok' : 'warn'}`} aria-labelledby="google-status">
+      <h2 className="subTitle" id="google-status">{g.configured ? <><CircleCheck size={18} aria-hidden="true" /> Connexion Google active</> : <><TriangleAlert size={18} aria-hidden="true" /> Connexion Google pas encore activée</>}</h2>
+      <p className="muted">{g.configured
+        ? 'Les boutons « Se connecter avec Google » et « S’inscrire avec Google » fonctionnent.'
+        : 'Les boutons Google sont affichés, mais grisés avec la mention « bientôt disponible ». Les visiteurs se connectent avec leur e-mail en attendant.'}</p>
+      <dl className="kv">
+        <dt>Identifiant client</dt><dd>{g.client_id || 'manquant (GOOGLE_CLIENT_ID)'}</dd>
+        <dt>Code secret</dt><dd>{g.secret ? 'renseigné' : 'manquant (GOOGLE_CLIENT_SECRET)'}</dd>
+        <dt>Comptes reliés à Google</dt><dd>{g.linked_accounts}</dd>
+      </dl>
+      <h3 className="subTitle">À déclarer dans Google Cloud</h3>
+      <p className="muted">Console Google Cloud → API et services → Identifiants → votre « ID client OAuth » (type Application Web).</p>
+      <dl className="kv">
+        <dt>Origine JavaScript autorisée</dt><dd><code>{g.origin}</code> <button type="button" className="linkBtn" onClick={() => copy(g.origin)}>Copier</button></dd>
+        <dt>URI de redirection autorisée</dt><dd><code>{g.redirect_uri}</code> <button type="button" className="linkBtn" onClick={() => copy(g.redirect_uri)}>Copier</button></dd>
+      </dl>
+      {!g.configured && <p className="muted">Ensuite, ajoutez GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET dans les variables d’environnement Vercel, puis redéployez. Le guide pas à pas est dans docs/CONFIGURATION.md.</p>}
+    </section>
   );
 }
 

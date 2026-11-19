@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Menu, X, MapPin, Phone, Mail, Clock3, MessageCircle, ChevronDown, ArrowRight } from 'lucide-react';
+import { Menu, X, MapPin, Phone, Mail, Clock3, MessageCircle, ChevronDown, ArrowRight, UserRound, LayoutDashboard, Bell, ShieldCheck, LogOut, LogIn } from 'lucide-react';
+import { avatarUrl } from '../lib/api.js';
 import { Link, usePath } from '../lib/router.jsx';
 import { BUSINESS, whatsappLink } from '../config.js';
 import { useApp } from '../context.js';
 import { useCatalog } from '../lib/catalog.jsx';
 
 function TopBar() {
-  const { user, openAuth } = useApp();
   return (
     <div className="topBar">
       <div className="wrap topBarRow">
@@ -16,7 +16,6 @@ function TopBar() {
         </span>
         <nav aria-label="Liens rapides">
           <a href={`mailto:${BUSINESS.email}`}>{BUSINESS.email}</a>
-          {user ? <Link to="/espace">Espace client</Link> : <button type="button" onClick={openAuth}>Espace client</button>}
           <a href={whatsappLink(undefined, 'contact')} target="_blank" rel="noreferrer">WhatsApp {BUSINESS.phoneDisplay}</a>
           <Link to="/e-man-cars" className="carsLink">E-MAN CARS</Link>
         </nav>
@@ -100,8 +99,76 @@ function FormationsMenu() {
   );
 }
 
+const ROLE_LABEL = { admin: 'Administrateur', staff: 'Équipe', client: 'Client' };
+const initialsOf = (u) => ((u.first_name?.[0] || u.full_name?.[0] || '?') + (u.last_name?.[0] || '')).toUpperCase();
+
+/** Photo de profil, ou initiales à défaut. */
+function Avatar({ user, size = 36 }) {
+  return user.avatar_file_id
+    ? <img className="avatar" src={avatarUrl(user.avatar_file_id)} alt="" width={size} height={size} style={{ width: size, height: size }} />
+    : <span className="avatar" aria-hidden="true" style={{ width: size, height: size, fontSize: size * 0.38 }}>{initialsOf(user)}</span>;
+}
+
+/** Non connecté : Connexion et Inscription, toujours visibles dans l'en-tête. */
+function AuthButtons() {
+  const { openAuth } = useApp();
+  return (
+    <div className="authButtons">
+      <button type="button" className="authLogin" onClick={() => openAuth('login')}>
+        <LogIn size={18} aria-hidden="true" /><span>Connexion</span>
+      </button>
+      <button type="button" className="btn btnOutlineBlue btnSmall authSignup" onClick={() => openAuth('signup')}>Inscription</button>
+    </div>
+  );
+}
+
+/** Connecté : photo de profil et menu du compte. */
+function AccountMenu() {
+  const { user, logout, openSpace, unread } = useApp();
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const path = usePath();
+  useEffect(() => setOpen(false), [path]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (!ref.current?.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') { setOpen(false); ref.current?.querySelector('button')?.focus(); } };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  const first = user.first_name || (user.full_name || '').split(' ')[0] || 'Mon compte';
+  const goTo = (section) => { setOpen(false); openSpace(section); };
+  const isTeam = user.role !== 'client';
+  return (
+    <div className="accountMenu" ref={ref}>
+      <button type="button" className="accountBtn" aria-expanded={open} aria-controls="menu-compte"
+        aria-label={`Mon compte : ${user.full_name || first}${unread ? `, ${unread} notification${unread > 1 ? 's' : ''} non lue${unread > 1 ? 's' : ''}` : ''}`}
+        onClick={() => setOpen(!open)}>
+        <span className="accountAvatar"><Avatar user={user} size={36} />{unread > 0 && <span className="badgeCount" aria-hidden="true">{unread > 99 ? '99+' : unread}</span>}</span>
+        <span className="accountName" aria-hidden="true">{first}</span>
+        <ChevronDown size={16} aria-hidden="true" className="chev" />
+      </button>
+      <div id="menu-compte" className="accountPanel" data-open={open}>
+        <div className="accountHead">
+          <Avatar user={user} size={44} />
+          <span><strong>{user.full_name}</strong><small>{user.email}</small><small className="accountRole">{ROLE_LABEL[user.role] || 'Client'}</small></span>
+        </div>
+        <ul>
+          <li><button type="button" onClick={() => goTo(null)}><LayoutDashboard size={18} aria-hidden="true" />{isTeam ? 'Tableau de bord' : 'Mon espace'}</button></li>
+          <li><button type="button" onClick={() => goTo('notifications')}><Bell size={18} aria-hidden="true" />Notifications{unread > 0 && <span className="badgeCount">{unread}</span>}</button></li>
+          <li><button type="button" onClick={() => goTo('profil')}><UserRound size={18} aria-hidden="true" />Mon profil</button></li>
+          <li><button type="button" onClick={() => goTo('securite')}><ShieldCheck size={18} aria-hidden="true" />Sécurité</button></li>
+        </ul>
+        <button type="button" className="accountLogout" onClick={() => { setOpen(false); logout(); }}><LogOut size={18} aria-hidden="true" />Se déconnecter</button>
+      </div>
+    </div>
+  );
+}
+
 export function Header() {
-  const { user, openQuote, openAuth } = useApp();
+  const { user, ready, openQuote, openAuth, openSpace, logout } = useApp();
   const cat = useCatalog();
   const [open, setOpen] = useState(false);
   const path = usePath();
@@ -137,10 +204,11 @@ export function Header() {
           </nav>
 
           <div className="headerActions">
-            <button type="button" className="btn btnPrimary btnSmall" onClick={() => openQuote()}>
-              <span className="lgOnly">Demander un devis</span><span className="smOnly">Devis</span>
-              <ArrowRight size={16} aria-hidden="true" className="lgOnly" />
+            <button type="button" className="btn btnPrimary btnSmall quoteBtn" onClick={() => openQuote()}>
+              <span className="xlOnly">Demander un devis</span><span className="xlHide">Devis</span>
             </button>
+            {/* Tant que la session n'est pas connue, on réserve la place (pas de saut de mise en page). */}
+            {!ready ? <span className="authPlaceholder" aria-hidden="true" /> : user ? <AccountMenu /> : <AuthButtons />}
             <button
               type="button"
               className="menuToggle"
@@ -159,6 +227,17 @@ export function Header() {
       <div id="menu-mobile" className="navMobile" data-open={open} ref={panel}>
         <div className="navMobileInner">
           <nav className="wrap" aria-label="Menu principal">
+            {ready && (user ? (
+              <div className="navMobileAccount">
+                <Avatar user={user} size={40} />
+                <span><strong>{user.full_name}</strong><small>{ROLE_LABEL[user.role] || 'Client'}</small></span>
+              </div>
+            ) : (
+              <div className="navMobileAuth">
+                <button type="button" className="btn btnPrimary btnSmall" onClick={() => { setOpen(false); openAuth('login'); }}>Connexion</button>
+                <button type="button" className="btn btnOutlineBlue btnSmall" onClick={() => { setOpen(false); openAuth('signup'); }}>Inscription</button>
+              </div>
+            ))}
             <Link to="/">Accueil</Link>
             <Link to="/prestations">Prestations</Link>
             <ul className="navMobileSub">
@@ -171,9 +250,8 @@ export function Header() {
             <Link to="/realisations">Réalisations</Link>
             <Link to="/a-propos">À propos</Link>
             <Link to="/contact">Contact</Link>
-            {user
-              ? <Link to="/espace">Mon espace</Link>
-              : <button type="button" onClick={() => { setOpen(false); openAuth(); }}>Espace client</button>}
+            {user && <button type="button" onClick={() => { setOpen(false); openSpace(null); }}>Mon espace</button>}
+            {user && <button type="button" onClick={() => { setOpen(false); logout(); }}>Se déconnecter</button>}
             <Link to="/e-man-cars" className="navMobileCars">E-MAN CARS</Link>
             <a href={whatsappLink(undefined, 'contact')} target="_blank" rel="noreferrer" className="navMobileWa">
               <MessageCircle size={18} aria-hidden="true" /> WhatsApp {BUSINESS.phoneDisplay}

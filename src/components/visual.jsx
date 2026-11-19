@@ -163,16 +163,14 @@ export function HeroCarousel({ slides, interval = 6500, children }) {
 
 // ---------------------------------------------------------------------------
 // Cartes défilantes : défilement continu et doux (environ 30 px par seconde), en
-// boucle sans à-coup. Il s'arrête le temps que la souris est sur une carte, que la
-// personne fait défiler à la main ou navigue au clavier, puis reprend tout seul.
+// boucle sans à-coup, TOUT SEUL : il ne s'arrête jamais, même souris dessus. Seul un
+// défilement fait à la main (doigt, molette, flèches) le suspend quelques secondes.
 // Flèches, glissement tactile et cartes entièrement cliquables restent disponibles.
 // ---------------------------------------------------------------------------
 export function CardCarousel({ items, label, speed = 30 }) {
   const track = useRef(null);
   const pos = useRef(0);           // position exacte (les navigateurs arrondissent scrollLeft)
   const resumeAt = useRef(0);      // reprise après une action de la personne
-  const hover = useRef(false);
-  const focus = useRef(false);
   const [visible, setVisible] = useState(false);
   const loop = items.length > 1;
 
@@ -190,11 +188,12 @@ export function CardCarousel({ items, label, speed = 30 }) {
     const copy = el?.children[items.length];
     return first && copy ? copy.offsetLeft - first.offsetLeft : 0;
   };
+  const touching = useRef(false);  // doigt posé : on suit le doigt, puis on repart
   const pauseFor = (ms) => { resumeAt.current = Date.now() + ms; };
 
   const scroll = (dir) => {
     const el = track.current;
-    pauseFor(6000);
+    pauseFor(1500);
     el.scrollBy({ left: dir * step(), behavior: 'smooth' });
   };
 
@@ -213,7 +212,7 @@ export function CardCarousel({ items, label, speed = 30 }) {
     const frame = (now) => {
       const dt = Math.min(now - last, 100);
       last = now;
-      const busy = hover.current || focus.current || Date.now() < resumeAt.current || document.visibilityState !== 'visible';
+      const busy = touching.current || Date.now() < resumeAt.current || document.visibilityState !== 'visible';
       if (busy) {
         pos.current = el.scrollLeft;
         el.dataset.auto = 'false';
@@ -244,18 +243,14 @@ export function CardCarousel({ items, label, speed = 30 }) {
       role="region"
       aria-roledescription="carrousel"
       aria-label={label}
-      onPointerEnter={(e) => { if (e.pointerType === 'mouse') hover.current = true; }}
-      onPointerLeave={(e) => { if (e.pointerType === 'mouse') hover.current = false; }}
-      onFocus={() => { focus.current = true; }}
-      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) focus.current = false; }}
-      onPointerDown={(e) => { if (e.pointerType !== 'mouse') pauseFor(4000); }}
-      onWheel={() => pauseFor(4000)}
+      onPointerDown={(e) => { if (e.pointerType !== 'mouse') pauseFor(1000); }}
+      onWheel={() => pauseFor(1200)}
     >
       <div className="carouselArrows">
         <button type="button" className="roundBtn" onClick={() => scroll(-1)} aria-label="Cartes précédentes"><ChevronLeft size={20} aria-hidden="true" /></button>
         <button type="button" className="roundBtn" onClick={() => scroll(1)} aria-label="Cartes suivantes"><ChevronRight size={20} aria-hidden="true" /></button>
       </div>
-      <ul className="cardTrack" data-loop={loop || undefined} ref={track} onScroll={onScroll} onTouchStart={() => pauseFor(4000)} tabIndex={0} aria-label={`${label} : faites défiler horizontalement`}>
+      <ul className="cardTrack" data-loop={loop || undefined} ref={track} onScroll={onScroll} onTouchStart={() => { touching.current = true; }} onTouchEnd={() => { touching.current = false; pauseFor(900); }} onTouchCancel={() => { touching.current = false; pauseFor(900); }} tabIndex={0} aria-label={`${label} : faites défiler horizontalement`}>
         {list.map((a, i) => {
           const copy = i >= items.length;
           return (

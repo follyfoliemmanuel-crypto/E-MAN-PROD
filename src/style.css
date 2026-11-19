@@ -1313,3 +1313,17 @@ details.spaceBlock > summary { cursor: pointer; }
 /* Défilement continu des cartes : pas d'aimantation pendant le mouvement automatique. */
 .cardTrack[data-loop] { scroll-snap-type: none; }
 .cardTrack[data-auto='true'] { scroll-behavior: auto; }
+
+/* Bandeau du haut défilant (v3.4) : défilement continu, sans arrêt. */
+.topTicker { overflow: hidden; min-height: 36px; display: flex; align-items: center; }
+.topTickerTrack { display: flex; width: max-content; animation: top-ticker 38s linear infinite; }
+.topTickerGroup { display: flex; align-items: center; flex-shrink: 0; }
+.topTickerGroup > * { display: inline-flex; align-items: center; gap: 6px; padding: 0 28px; color: var(--on-dark); text-decoration: none; white-space: nowrap; line-height: 1; border-left: 1px solid rgba(255, 255, 255, .22); }
+.topTickerGroup > :first-child { border-left: 0; }
+.topTickerGroup + .topTickerGroup > :first-child { border-left: 1px solid rgba(255, 255, 255, .22); }
+.topTickerGroup > a:hover { color: #fff; text-decoration: underline; }
+.topTickerGroup .topBarPlace { display: inline-flex; }
+@keyframes top-ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .topTickerTrack { animation-duration: 38s !important; animation-iteration-count: infinite !important; }
+}

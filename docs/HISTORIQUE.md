@@ -1,5 +1,11 @@
 # Historique des versions et des vérifications
 
+## v3.4.1 — Défilement automatique partout
+
+- Bandeau du haut (adresse du siège et de l'annexe, e-mail, WhatsApp, E-MAN CARS) : défile tout seul en continu, en boucle, les liens restent cliquables.
+- Cartes « Ce que nous réalisons pour vous » : défilent toutes seules sans jamais s'arrêter, même avec la souris dessus. Au doigt, elles suivent le doigt puis repartent moins d'une seconde après qu'on les lâche (flèches et molette : reprise après 1 à 1,5 s).
+- Tests : défilement des cartes souris posée, doigt posé puis lâché, bandeau en mouvement, liens cliquables, réglage « moins d'animations ».
+
 ## v3.4.0 — compression automatique des fichiers avant l'envoi
 - **Dans le navigateur, avant Cloudinary**, sans rien installer (`src/lib/compress.js`) :
   - fichier sous la limite : envoyé tel quel, identique à l'octet près (fichiers d'impression) ;

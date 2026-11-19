@@ -6,20 +6,25 @@ import { BUSINESS, whatsappLink } from '../config.js';
 import { useApp } from '../context.js';
 import { useCatalog } from '../lib/catalog.jsx';
 
+/**
+ * Bandeau du haut : adresse, e-mail, WhatsApp et E-MAN CARS défilent en continu, tout
+ * seuls, en boucle. Le contenu est répété une fois (copie invisible pour les lecteurs
+ * d'écran) pour une boucle sans à-coup.
+ */
 function TopBar() {
+  const group = (copy) => (
+    <div className="topTickerGroup" aria-hidden={copy || undefined} inert={copy ? '' : undefined}>
+      <span className="topBarPlace"><MapPin size={14} aria-hidden="true" />{BUSINESS.sites.map((s) => `${s.role} : ${s.name}`).join('  ·  ')}</span>
+      <a href={`mailto:${BUSINESS.email}`} tabIndex={copy ? -1 : undefined}>{BUSINESS.email}</a>
+      <a href={whatsappLink(undefined, 'contact')} target="_blank" rel="noreferrer" tabIndex={copy ? -1 : undefined}>WhatsApp {BUSINESS.phoneDisplay}</a>
+      <Link to="/e-man-cars" className="carsLink" tabIndex={copy ? -1 : undefined}>E-MAN CARS</Link>
+    </div>
+  );
   return (
     <div className="topBar">
-      <div className="wrap topBarRow">
-        <span className="topBarPlace">
-          <MapPin size={14} aria-hidden="true" />
-          {BUSINESS.sites.map((s) => `${s.role} : ${s.name}`).join('  ·  ')}
-        </span>
-        <nav aria-label="Liens rapides">
-          <a href={`mailto:${BUSINESS.email}`}>{BUSINESS.email}</a>
-          <a href={whatsappLink(undefined, 'contact')} target="_blank" rel="noreferrer">WhatsApp {BUSINESS.phoneDisplay}</a>
-          <Link to="/e-man-cars" className="carsLink">E-MAN CARS</Link>
-        </nav>
-      </div>
+      <nav className="topTicker" aria-label="Coordonnées et liens rapides">
+        <div className="topTickerTrack">{group(false)}{group(true)}</div>
+      </nav>
     </div>
   );
 }

@@ -8,7 +8,9 @@
 import { execSync } from 'node:child_process';
 
 const run = (cmd) => execSync(cmd, { stdio: 'inherit', env: process.env });
-if (process.env.VERCEL_ENV === 'production' && process.env.DATABASE_URL) {
+// Si le site utilise un compte de base limité (DATABASE_URL), les migrations passent par le compte
+// propriétaire DATABASE_URL_OWNER (seul autorisé à créer ou modifier des tables).
+if (process.env.VERCEL_ENV === 'production' && (process.env.DATABASE_URL_OWNER || process.env.DATABASE_URL)) {
   console.log('Base de données : application des migrations en attente…');
   run('node scripts/db.mjs migrate --no-backup');
 } else if (process.env.VERCEL_ENV === 'production') {

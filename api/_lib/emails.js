@@ -15,6 +15,15 @@ export const TEMPLATES = {
     cta: 'Confirmer mon adresse',
     outro: 'Ce lien est valable 48 heures. Si vous n’avez pas créé de compte, ignorez ce message.',
   },
+  account_exists: {
+    label: 'Inscription avec une adresse déjà inscrite', category: 'account',
+    vars: ['prenom', 'lien'],
+    subject: 'Vous avez déjà un compte E-MAN PROD',
+    title: 'Votre compte existe déjà',
+    intro: 'Bonjour {prenom}, quelqu’un (sans doute vous) a voulu créer un compte E-MAN PROD avec cette adresse. Vous en avez déjà un : connectez-vous, ou choisissez un nouveau mot de passe si vous l’avez oublié.',
+    cta: 'Me connecter',
+    outro: 'Si vous n’êtes pas à l’origine de cette demande, ignorez ce message : rien n’a été modifié.',
+  },
   password_reset: {
     label: 'Réinitialisation du mot de passe', category: 'account',
     vars: ['prenom', 'lien'],

@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROUTES, SITE_URL, courseMeta, serviceMeta } from '../src/routes-meta.js';
-import { PRESTATIONS, COURSES } from '../src/content/seed.js';
+import { PRESTATIONS, ALL_COURSES as COURSES } from '../src/content/seed.js';
 
 const dist = new URL('../dist/', import.meta.url).pathname;
 // Le modèle cite le domaine prévu : on le remplace par l'adresse réelle (SITE_URL).

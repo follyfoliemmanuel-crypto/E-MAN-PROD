@@ -1,5 +1,6 @@
 // Espace client : accueil, demande de devis, formations, documents, notifications, assistance, profil.
 import React, { useState } from 'react';
+import { useLive } from '../../lib/live.js';
 import { Paperclip, Plus, Trash2, MessageCircle, Phone, Mail, FileText, Download, Megaphone, Award, Receipt, Check } from 'lucide-react';
 import { BUSINESS, whatsappLink } from '../../config.js';
 import { useCatalog } from '../../lib/catalog.jsx';
@@ -437,6 +438,7 @@ export function NotificationsSection({ go, onRead }) {
     setPages([]);
     return r;
   }, [filter.unread, filter.category]);
+  useLive(() => true, () => reload(), [filter.unread, filter.category]);
   const list = data ? [...data.notifications, ...pages.flatMap((p) => p.notifications)] : [];
   const hasMore = pages.length ? pages[pages.length - 1].has_more : data?.has_more;
   const more = async () => {
@@ -544,6 +546,8 @@ export function SupportSection({ notify }) {
 /** Fil d'assistance : `who` = 'me' (client) ou l'identifiant du client (équipe). */
 export function SupportThread({ who, notify, side, onSent }) {
   const [{ data, error, loading }, reload] = useLoad(() => space.supportMessages(who), [who]);
+  // Assistance : côté client, toute réponse de l'équipe ; côté équipe, un message de CE client.
+  useLive((n) => n.kind.startsWith('message.') && String(n.link || '').includes('assistance') && (side === 'client' || String(n.link).includes(who)), () => reload(), [who, side]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   return (

@@ -2,6 +2,7 @@
 // Les règles (qui peut faire quoi, quand) sont appliquées par le serveur ; l'écran
 // n'affiche que les actions que le serveur autorise (champ « allowed »).
 import React, { useCallback, useEffect, useState } from 'react';
+import { useLive } from '../lib/live.js';
 import { MessageCircle, Paperclip, Plus, Trash2, X, Download } from 'lucide-react';
 import { LimitHint } from '../lib/limits.jsx';
 import {
@@ -45,6 +46,7 @@ export function QuotesPanel({ isAdmin, notify, search, onChanged, initialId = nu
   const [open, setOpen] = useState(initialId);
   const [status, setStatus] = useState('');
   const [{ loading, data, error }, reload] = useLoader(() => fetchQuotes(status ? { status } : {}), [status]);
+  useLive((n) => n.kind.startsWith('quote.'), () => reload(), [status]);
   const rows = (data || []).filter((q) => !search || [q.number, q.customer_name, q.customer_phone, q.summary].join(' ').toLowerCase().includes(search));
   const refresh = () => { reload(); onChanged?.(); };
   if (loading && !data) return <p className="empty">Chargement…</p>;
@@ -91,6 +93,8 @@ const QUOTE_ACTIONS = {
 function QuoteDetail({ id, isAdmin, notify, onClose, onChanged }) {
   const confirm = useConfirm();
   const [{ loading, data: q, error }, reload] = useLoader(() => getQuote(id), [id]);
+  // Côté client : le devis envoyé ou mis à jour par l'atelier s'affiche aussitôt (l'équipe garde sa saisie en cours).
+  useLive((n) => !isAdmin && n.kind.startsWith('quote.') && String(n.link || '').includes(id), () => reload(), [id, isAdmin]);
   const [busy, setBusy] = useState(false);
   const run = async (fn, done) => {
     setBusy(true);
@@ -244,6 +248,8 @@ export function OrdersPanel({ isAdmin, notify, search, onChanged, initialId = nu
   const [status, setStatus] = useState('');
   const [mine, setMine] = useState(false);
   const [{ loading, data, error }, reload] = useLoader(() => fetchOrders({ status, ...(mine ? { assigned: 'me' } : {}) }), [status, mine]);
+  // Nouvelle commande d'un client, changement de statut : la liste se met à jour toute seule.
+  useLive((n) => n.kind.startsWith('order.'), () => reload(), [status, mine]);
   const rows = (data || []).filter((o) => !search || [o.number, o.customer_name, o.customer_phone, o.summary].join(' ').toLowerCase().includes(search));
   const LABELS = isAdmin ? ORDER_LABELS : CLIENT_ORDER_LABELS;
   const pending = isAdmin && !status ? (data || []).filter((o) => o.status === 'en_attente').length : 0;
@@ -294,6 +300,7 @@ export function OrdersPanel({ isAdmin, notify, search, onChanged, initialId = nu
 function OrderDetail({ id, isAdmin, notify, onClose, onChanged }) {
   const confirm = useConfirm();
   const [{ loading, data: o, error }, reload] = useLoader(() => getOrder(id), [id]);
+  useLive((n) => !isAdmin && (n.kind.startsWith('order.') || n.kind.startsWith('invoice.') || n.kind.startsWith('payment.')) && String(n.link || '').includes(id), () => reload(), [id, isAdmin]);
   const [{ data: members }] = useLoader(() => (isAdmin ? space.members().then((r) => r.members) : Promise.resolve([])), [isAdmin]);
   const [v, setV] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -496,6 +503,9 @@ function History({ items, labels }) {
 
 function Thread({ target, isAdmin, notify }) {
   const [{ data }, reload] = useLoader(() => fetchMessages(target), [target.quote_id, target.order_id]);
+  // Message reçu sur CE devis ou CETTE commande : la conversation se recharge (droits revérifiés par l'API).
+  const key = target.quote_id || target.order_id;
+  useLive((n) => n.kind.startsWith('message.') && String(n.link || '').includes(key), () => reload(), [key]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   return (

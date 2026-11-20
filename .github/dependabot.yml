@@ -1,0 +1,13 @@
+# Surveillance automatique des dépendances (GitHub) : alerte et proposition de mise à jour
+# dès qu'une faille connue touche un paquet du projet. Gratuit, rien à installer.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      securite:
+        applies-to: security-updates
+        patterns: ["*"]

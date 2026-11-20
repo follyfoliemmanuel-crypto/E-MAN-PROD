@@ -27,20 +27,45 @@ const TRAINING_COLUMNS = {
   category_slug: 'category_slug', title: 'title', domain: 'domain', summary: 'summary', description: 'description',
   objectives: 'objectives', program: 'program', duration: 'duration', level: 'level', prerequisites: 'prerequisites',
   price_fcfa: 'price_fcfa', price_note: 'price_note', certificate: 'certificate', sort: 'sort', published: 'published',
-  certificate_rules: 'certificate_rules',
+  certificate_rules: 'certificate_rules', duration_options: 'duration_options', registration_fee_fcfa: 'registration_fee_fcfa',
+  extra_fees: 'extra_fees', payment_terms: 'payment_terms', admission_requirements: 'admission_requirements',
 };
 
-export async function createTraining(actor, t) {
+/**
+ * Les anciens champs texte « durée » et « prérequis » restent alimentés (PDF, e-mails, inscriptions
+ * existantes) à partir des nouvelles listes, pour qu'il n'y ait qu'une seule source à modifier.
+ */
+function syncLegacy(t) {
+  const out = { ...t };
+  const opts = Array.isArray(t.duration_options) ? t.duration_options : null;
+  if (opts?.length) {
+    out.duration_options = opts.map((o) => ({ label: o.label, ...(o.price_fcfa != null ? { price_fcfa: o.price_fcfa } : {}), ...(o.note ? { note: o.note } : {}) }));
+    out.duration = out.duration_options.map((o) => o.label).join(' · ').slice(0, 120);
+  } else if (t.duration) out.duration_options = [{ label: t.duration }];
+  else if (opts) out.duration = null;
+  const reqs = Array.isArray(t.admission_requirements) ? t.admission_requirements : null;
+  if (reqs?.length) out.prerequisites = reqs.join(' ; ').slice(0, 600);
+  else if (t.prerequisites) out.admission_requirements = [t.prerequisites];
+  else if (reqs) out.prerequisites = null;
+  return out;
+}
+
+export async function createTraining(actor, input) {
+  const t = syncLegacy(input);
   if (!(await one('select slug from training_categories where slug = $1', [t.category_slug]))) throw new HttpError(404, 'Pôle de formation introuvable.');
   if (await one('select slug from trainings where slug = $1', [t.slug])) throw new HttpError(409, 'Une formation utilise déjà cet identifiant.');
+  if (await one('select slug from trainings where lower(btrim(title)) = lower(btrim($1))', [t.title])) throw new HttpError(409, `Une formation « ${t.title} » existe déjà : modifiez-la plutôt que d’en créer une deuxième.`);
   const row = await one(
     `insert into trainings (slug, category_slug, title, domain, summary, description, objectives, program, duration, level,
-                            prerequisites, price_fcfa, price_note, certificate, sort, published)
+                            prerequisites, price_fcfa, price_note, certificate, sort, published,
+                            duration_options, registration_fee_fcfa, extra_fees, payment_terms, admission_requirements)
      values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13, $14,
-             coalesce($15, (select coalesce(max(sort), 0) + 1 from trainings where category_slug = $2)), $16)
+             coalesce($15, (select coalesce(max(sort), 0) + 1 from trainings where category_slug = $2)), $16,
+             $17::jsonb, $18, $19::jsonb, $20, $21::jsonb)
      returning slug`,
-    [t.slug, t.category_slug, t.title, t.domain, t.summary, t.description ?? '', JSON.stringify(t.objectives), JSON.stringify(t.program),
-      t.duration, t.level, t.prerequisites, t.price_fcfa, t.price_note, t.certificate, t.sort, t.published ?? false],
+    [t.slug, t.category_slug, t.title, t.domain, t.summary, t.description ?? '', JSON.stringify(t.objectives || []), JSON.stringify(t.program || []),
+      t.duration, t.level, t.prerequisites, t.price_fcfa, t.price_note, t.certificate, t.sort, t.published ?? false,
+      JSON.stringify(t.duration_options || []), t.registration_fee_fcfa, JSON.stringify(t.extra_fees || []), t.payment_terms, JSON.stringify(t.admission_requirements || [])],
   );
   await logActivity(actor, 'training.created', 'training', row.slug, { title: t.title });
   return row;
@@ -54,7 +79,11 @@ export async function updateTraining(actor, slug, patch) {
     throw new HttpError(409, 'Cette formation est archivée : désarchivez-la avant de la publier.');
   }
   for (const k of ['title', 'domain', 'summary']) if (k in patch && !patch[k]) throw new HttpError(400, `Le champ ${k} ne peut pas être vide.`);
-  const row = await updateRow('trainings', 'slug', slug, { ...patch }, TRAINING_COLUMNS, 'Formation introuvable.');
+  // Un titre déjà pris par une autre formation : refusé (pas de doublon sous un autre identifiant).
+  if (patch.title && (await one(`select slug from trainings where slug <> $1 and lower(btrim(title)) = lower(btrim($2))`, [slug, patch.title]))) {
+    throw new HttpError(409, 'Une autre formation porte déjà ce titre.');
+  }
+  const row = await updateRow('trainings', 'slug', slug, syncLegacy(patch), TRAINING_COLUMNS, 'Formation introuvable.');
   await query('update trainings set updated_at = now() where slug = $1 returning slug', [slug]);
   await logActivity(actor, 'training.updated', 'training', slug, { fields: Object.keys(patch) });
   return row;
@@ -302,7 +331,8 @@ export async function loadCatalog({ all = false } = {}) {
     query(`select slug, title, summary, intro, offerings, placeholder, related_category_slug as related_pole, sort, published from services ${pub} order by sort, title`),
     query('select slug, number, title, summary, sort from training_categories order by sort, number'),
     query(`select slug, category_slug as pole_slug, title, domain, summary, description, objectives, program, duration, level, prerequisites,
-                  price_fcfa, price_note, certificate, certificate_rules, placeholder, sort, published, archived_at
+                  price_fcfa, price_note, certificate, certificate_rules, placeholder, sort, published, archived_at,
+                  duration_options, registration_fee_fcfa, extra_fees, payment_terms, admission_requirements
              from trainings ${pub} order by sort, title`),
     query(`select s.id, s.training_slug as course_slug, to_char(s.starts_on, 'YYYY-MM-DD') as starts_on, to_char(s.ends_on, 'YYYY-MM-DD') as ends_on,
                   s.schedule, s.site, s.seats, s.status,

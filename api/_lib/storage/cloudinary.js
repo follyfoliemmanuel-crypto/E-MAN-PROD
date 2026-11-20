@@ -37,6 +37,9 @@ export function cloudinaryConfig(env = process.env) {
       secret: env.CLOUDINARY_API_SECRET,
       folder: (env.CLOUDINARY_FOLDER || 'emanprod').replace(/^\/+|\/+$/g, ''),
       maxBytes: Math.floor(maxMb * 1024 * 1024),
+      // Signature des appels à l'API : SHA-256 (Cloudinary accepte SHA-1 et SHA-256 par défaut).
+      // CLOUDINARY_SIGNATURE_ALGORITHM=sha1 permet de revenir à l'ancien format si un compte le refusait.
+      algo: String(env.CLOUDINARY_SIGNATURE_ALGORITHM || 'sha256').toLowerCase() === 'sha1' ? 'sha1' : 'sha256',
       api: (test && env.CLOUDINARY_TEST_API_BASE) || 'https://api.cloudinary.com',
       delivery: (test && env.CLOUDINARY_TEST_DELIVERY_BASE) || 'https://res.cloudinary.com',
     },
@@ -46,10 +49,10 @@ export function cloudinaryConfig(env = process.env) {
 }
 
 /** Signature des appels d'API : paramètres non vides, triés, secret ajouté, SHA-1 hex. */
-export function apiSignature(params, secret) {
+export function apiSignature(params, secret, algo = 'sha1') {
   const s = Object.keys(params).filter((k) => params[k] !== undefined && params[k] !== null && params[k] !== '')
     .sort().map((k) => `${k}=${Array.isArray(params[k]) ? params[k].join(',') : params[k]}`).join('&');
-  return createHash('sha1').update(s + secret).digest('hex');
+  return createHash(algo === 'sha256' ? 'sha256' : 'sha1').update(s + secret).digest('hex');
 }
 
 /** Signature d'adresse de livraison : composant « s--XXXXXXXX-- ». */
@@ -96,7 +99,7 @@ export function cloudinaryProvider(cfg) {
       type: dt(row),
     };
     const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined));
-    const q = new URLSearchParams({ ...clean, api_key: cfg.apiKey, signature: apiSignature(clean, cfg.secret) });
+    const q = new URLSearchParams({ ...clean, api_key: cfg.apiKey, signature: apiSignature(clean, cfg.secret, cfg.algo) });
     return `${cfg.api}/v1_1/${cfg.cloud}/${rt(row)}/download?${q}`;
   }
 
@@ -131,7 +134,7 @@ export function cloudinaryProvider(cfg) {
         upload: {
           method: 'POST',
           url: `${cfg.api}/v1_1/${cfg.cloud}/${resourceType}/upload`,
-          fields: { ...clean, api_key: cfg.apiKey, signature: apiSignature(clean, cfg.secret) },
+          fields: { ...clean, api_key: cfg.apiKey, signature: apiSignature(clean, cfg.secret, cfg.algo) },
         },
       };
     },
@@ -164,7 +167,7 @@ export function cloudinaryProvider(cfg) {
     },
     async remove(row) {
       const params = { invalidate: 'true', public_id: row.storage_key, timestamp: String(now()), type: dt(row) };
-      const body = new URLSearchParams({ ...params, api_key: cfg.apiKey, signature: apiSignature(params, cfg.secret) });
+      const body = new URLSearchParams({ ...params, api_key: cfg.apiKey, signature: apiSignature(params, cfg.secret, cfg.algo) });
       const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/${rt(row)}/destroy`, { method: 'POST', body });
       if (!r.ok) throw fail(r, 'suppression');
       const j = await r.json().catch(() => ({}));
@@ -181,7 +184,7 @@ export function cloudinaryProvider(cfg) {
     async write(row, buffer) {
       const params = { overwrite: 'true', public_id: row.storage_key, timestamp: String(now()), type: dt(row) };
       const form = new FormData();
-      for (const [k, v] of Object.entries({ ...params, api_key: cfg.apiKey, signature: apiSignature(params, cfg.secret) })) form.append(k, v);
+      for (const [k, v] of Object.entries({ ...params, api_key: cfg.apiKey, signature: apiSignature(params, cfg.secret, cfg.algo) })) form.append(k, v);
       form.append('file', new Blob([buffer], { type: row.mime_type || 'application/octet-stream' }), 'restauration');
       const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/${rt(row)}/upload`, { method: 'POST', body: form });
       if (!r.ok) throw fail(r, 'restauration');

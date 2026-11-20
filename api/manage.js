@@ -38,8 +38,21 @@ const training = z.object({
   duration: s.text('Durée', { max: 120 }),
   level: s.text('Niveau', { max: 120 }),
   prerequisites: s.text('Prérequis', { max: 600 }),
-  price_fcfa: s.fcfa('Tarif'),
+  price_fcfa: s.fcfa('Prix de la formation'),
   price_note: s.text('Précision sur le tarif', { max: 200 }),
+  // Fiche détaillée : tout est libre et modifiable par l'administration (rien n'est figé dans le code).
+  duration_options: s.list(z.object({
+    label: s.text('Durée', { min: 1, max: 120, req: true }),
+    price_fcfa: s.fcfa('Prix pour cette durée'),
+    note: s.text('Précision', { max: 160 }),
+  }), 'Options de durée', { max: 12 }),
+  registration_fee_fcfa: s.fcfa('Frais d’inscription'),
+  extra_fees: s.list(z.object({
+    label: s.text('Frais', { min: 2, max: 120, req: true }),
+    amount_fcfa: s.fcfa('Montant', { req: true }),
+  }), 'Frais supplémentaires', { max: 12 }),
+  payment_terms: s.text('Modalités de paiement', { max: 600 }),
+  admission_requirements: s.list(s.text('Condition', { min: 2, max: 300, req: true }), 'Conditions d’admission', { max: 20 }),
   certificate: s.text('Attestation', { max: 200 }),
   // Règles de délivrance de l'attestation, fixées par l'administration.
   certificate_rules: z.object({

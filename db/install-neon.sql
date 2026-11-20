@@ -1,5 +1,5 @@
 -- =============================================================================
--- E-MAN PROD v3.5.0 : installation ou mise à jour de la base de données
+-- E-MAN PROD v3.9.0 : installation ou mise à jour de la base de données
 -- Fichier généré par « npm run db:sql » à partir de db/migrations : ne pas modifier à la main.
 --
 -- Utilisation (Neon) : console.neon.tech → votre projet → SQL Editor → coller tout
@@ -1260,6 +1260,76 @@ end
 $install$;
 
 -- -----------------------------------------------------------------------------
+-- Migration 010_training_details.sql
+-- -----------------------------------------------------------------------------
+do $install$
+declare applied text;
+begin
+  select checksum into applied from schema_migrations where version = '010';
+  if applied is null then
+    execute $m010$
+-- 010 — Formations : durées multiples, frais, conditions d'admission (tout se règle dans l'administration).
+-- Migration ADDITIVE : nouvelles colonnes seulement. Les anciennes (duration, prerequisites, price_fcfa…)
+-- sont conservées et restent remplies, pour les PDF, e-mails et inscriptions existants.
+
+alter table trainings add column if not exists duration_options jsonb not null default '[]'::jsonb
+  check (jsonb_typeof(duration_options) = 'array' and jsonb_array_length(duration_options) <= 12);
+alter table trainings add column if not exists registration_fee_fcfa integer check (registration_fee_fcfa is null or registration_fee_fcfa >= 0);
+alter table trainings add column if not exists extra_fees jsonb not null default '[]'::jsonb
+  check (jsonb_typeof(extra_fees) = 'array' and jsonb_array_length(extra_fees) <= 12);
+alter table trainings add column if not exists payment_terms text check (char_length(payment_terms) <= 600);
+alter table trainings add column if not exists admission_requirements jsonb not null default '[]'::jsonb
+  check (jsonb_typeof(admission_requirements) = 'array' and jsonb_array_length(admission_requirements) <= 20);
+
+-- Reprise des valeurs déjà saisies : la durée devient la première option, le prérequis la première condition.
+update trainings set duration_options = jsonb_build_array(jsonb_build_object('label', duration))
+ where duration is not null and btrim(duration) <> '' and duration_options = '[]'::jsonb;
+update trainings set admission_requirements = jsonb_build_array(prerequisites)
+ where prerequisites is not null and btrim(prerequisites) <> '' and admission_requirements = '[]'::jsonb;
+$m010$;
+    insert into schema_migrations (version, name, checksum) values ('010', 'training_details', 'ae13ffd63d4139511b3ae1c618e2b0ef8dab7765b36e52e64c53eb08df5a1a5f');
+    raise notice 'Migration 010_training_details.sql appliquée.';
+  elsif applied <> 'ae13ffd63d4139511b3ae1c618e2b0ef8dab7765b36e52e64c53eb08df5a1a5f' then
+    raise exception 'La migration 010_training_details.sql a été modifiée après application : rien n''a été changé.';
+  else
+    raise notice 'Migration 010_training_details.sql déjà appliquée.';
+  end if;
+end
+$install$;
+
+-- -----------------------------------------------------------------------------
+-- Migration 011_session_verify.sql
+-- -----------------------------------------------------------------------------
+do $install$
+declare applied text;
+begin
+  select checksum into applied from schema_migrations where version = '011';
+  if applied is null then
+    execute $m011$
+-- 011 — Une session peut aussi s'ouvrir par le lien de confirmation reçu à l'inscription.
+-- Migration ADDITIVE : la liste des valeurs acceptées s'élargit, rien n'est modifié ni supprimé.
+do $$
+declare c record;
+begin
+  for c in select conname from pg_constraint
+            where conrelid = 'sessions'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%method%'
+  loop
+    execute format('alter table sessions drop constraint %I', c.conname);
+  end loop;
+end $$;
+alter table sessions add constraint sessions_method_values check (method in ('password', 'google', 'reset', 'verify'));
+$m011$;
+    insert into schema_migrations (version, name, checksum) values ('011', 'session_verify', 'ffa0932b57cffa512ab6863a377682277e28623358d974008fc45356a8877c9e');
+    raise notice 'Migration 011_session_verify.sql appliquée.';
+  elsif applied <> 'ffa0932b57cffa512ab6863a377682277e28623358d974008fc45356a8877c9e' then
+    raise exception 'La migration 011_session_verify.sql a été modifiée après application : rien n''a été changé.';
+  else
+    raise notice 'Migration 011_session_verify.sql déjà appliquée.';
+  end if;
+end
+$install$;
+
+-- -----------------------------------------------------------------------------
 -- Contenu de départ (modifiable ensuite dans l'espace administrateur).
 -- « on conflict do nothing » : un élément déjà présent n'est jamais modifié.
 -- -----------------------------------------------------------------------------
@@ -1305,13 +1375,68 @@ insert into trainings (slug, category_slug, title, domain, summary, description,
              values ('developpement-web-dynamique', 'web', 'Développement web dynamique et bases de données', 'Développement web', 'Créer des sites qui enregistrent et affichent des données.', 'Une formation pour passer du site statique au site dynamique : formulaires, traitement des données et bases de données.', '["Comprendre le fonctionnement d’un site dynamique","Concevoir une base de données simple","Relier un site à une base de données"]'::jsonb, '["Développement web dynamique","Bases de données"]'::jsonb, 'dev-web', 3) on conflict (slug) do nothing;
 insert into trainings (slug, category_slug, title, domain, summary, description, objectives, program, placeholder, sort)
              values ('administration-hebergement', 'web', 'Administration, hébergement et mise en ligne', 'Technologies numériques', 'Mettre un site en ligne et l’administrer au quotidien.', 'Une formation pour choisir un hébergement, mettre un site en ligne et assurer son administration.', '["Choisir un hébergement et un nom de domaine","Mettre en ligne un site","Administrer et mettre à jour un site"]'::jsonb, '["Administration de sites web","Hébergement et mise en ligne"]'::jsonb, 'dev-web', 4) on conflict (slug) do nothing;
+insert into trainings (slug, category_slug, title, domain, summary, description, objectives, program, placeholder, sort, published,
+                                    level, registration_fee_fcfa)
+             select 'community-manager', 'web', 'Community manager (CM)', 'Communication digitale', 'Animer les réseaux sociais d’une entreprise : contenus, publications, communauté et résultats.', 'Une formation pratique pour gérer la présence d’une marque sur les réseaux sociais : stratégie, création de visuels et de textes, planification, échanges avec la communauté et lecture des statistiques.', '["Définir une ligne éditoriale adaptée à une entreprise","Créer des publications (visuels, textes, courtes vidéos)","Planifier et animer une page ou un compte professionnel","Répondre à la communauté et gérer les avis","Lire les statistiques et ajuster les actions"]'::jsonb, '["Panorama des réseaux sociais (Facebook, Instagram, TikTok, WhatsApp Business, LinkedIn)","Stratégie et calendrier éditorial","Création de contenus visuels et rédaction","Animation de communauté et service client en ligne","Publicité sur les réseaux : les bases","Statistiques et bilan"]'::jsonb, 'dev-web',
+                    (select coalesce(max(sort), 0) + 1 from trainings where category_slug = 'web'), true, 'Collège et plus', 10000
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and (select slug from trainings
+   where slug = any(ARRAY['community-manager', 'community-management', 'cm-community-manager']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ 'community'
+   order by (slug = any(ARRAY['community-manager', 'community-management', 'cm-community-manager']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1) is null
+                and exists (select 1 from training_categories where slug = 'web')
+             on conflict (slug) do nothing;
+insert into trainings (slug, category_slug, title, domain, summary, description, objectives, program, placeholder, sort, published,
+                                    level, registration_fee_fcfa)
+             select 'secretariat-bureautique', 'informatique', 'Secrétariat bureautique', 'Bureautique', 'Maîtriser les outils et les tâches d’un poste de secrétariat : courriers, tableaux, classement et accueil.', 'Une formation pour tenir un poste de secrétariat avec l’outil informatique : rédaction et mise en forme de documents, tableaux simples, messagerie, classement et organisation du travail de bureau.', '["Rédiger et mettre en forme courriers, rapports et comptes rendus","Réaliser des tableaux simples (listes, suivis, devis)","Organiser le classement papier et numérique","Gérer la messagerie, l’agenda et l’accueil téléphonique"]'::jsonb, '["Prise en main de l’ordinateur et du clavier","Traitement de texte : courriers et documents administratifs","Tableur : tableaux et calculs simples","Messagerie, internet et agenda","Classement, archivage et organisation du bureau","Accueil et communication professionnelle"]'::jsonb, 'atelier-info',
+                    (select coalesce(max(sort), 0) + 1 from trainings where category_slug = 'informatique'), true, 'Collège et plus', 10000
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and (select slug from trainings
+   where slug = any(ARRAY['secretariat-bureautique', 'secretariat']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ 'secretariat'
+   order by (slug = any(ARRAY['secretariat-bureautique', 'secretariat']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1) is null
+                and exists (select 1 from training_categories where slug = 'informatique')
+             on conflict (slug) do nothing;
+update trainings set registration_fee_fcfa = coalesce(registration_fee_fcfa, 10000),
+                                  level = coalesce(nullif(btrim(level), ''), 'Collège et plus'), updated_at = now()
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and slug = (select slug from trainings
+   where slug = any(ARRAY['community-manager', 'community-management', 'cm-community-manager']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ 'community'
+   order by (slug = any(ARRAY['community-manager', 'community-management', 'cm-community-manager']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1);
+update trainings set registration_fee_fcfa = coalesce(registration_fee_fcfa, 10000),
+                                  level = coalesce(nullif(btrim(level), ''), 'Collège et plus'), updated_at = now()
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and slug = (select slug from trainings
+   where slug = any(ARRAY['informatique-bureautique']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ '^(informatique.*bureautique|bureautique)'
+   order by (slug = any(ARRAY['informatique-bureautique']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1);
+update trainings set registration_fee_fcfa = coalesce(registration_fee_fcfa, 10000),
+                                  level = coalesce(nullif(btrim(level), ''), 'Collège et plus'), updated_at = now()
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and slug = (select slug from trainings
+   where slug = any(ARRAY['secretariat-bureautique', 'secretariat']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ 'secretariat'
+   order by (slug = any(ARRAY['secretariat-bureautique', 'secretariat']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1);
+update trainings set registration_fee_fcfa = coalesce(registration_fee_fcfa, 10000),
+                                  level = coalesce(nullif(btrim(level), ''), 'Collège et plus'), updated_at = now()
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and slug = (select slug from trainings
+   where slug = any(ARRAY['infographie-design-graphique', 'infographie']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ '^infographie'
+   order by (slug = any(ARRAY['infographie-design-graphique', 'infographie']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1);
+update trainings set registration_fee_fcfa = coalesce(registration_fee_fcfa, 10000),
+                                  level = coalesce(nullif(btrim(level), ''), 'Collège et plus'), updated_at = now()
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and slug = (select slug from trainings
+   where slug = any(ARRAY['serigraphie']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ '^serigraphie'
+   order by (slug = any(ARRAY['serigraphie']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1);
+update trainings set registration_fee_fcfa = coalesce(registration_fee_fcfa, 10000),
+                                  level = coalesce(nullif(btrim(level), ''), 'Collège et plus'), updated_at = now()
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and slug = (select slug from trainings
+   where slug = any(ARRAY['maintenance-informatique', 'maintenance-informatique-reseau']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ '^maintenance'
+   order by (slug = any(ARRAY['maintenance-informatique', 'maintenance-informatique-reseau']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1);
+update trainings set registration_fee_fcfa = coalesce(registration_fee_fcfa, 10000),
+                                  level = coalesce(nullif(btrim(level), ''), 'Collège et plus'), updated_at = now()
+              where not exists (select 1 from site_settings where key = 'import_fiche_formations') and slug = (select slug from trainings
+   where slug = any(ARRAY['impression-numerique-grand-format', 'impression-numerique']::text[]::text[]) or lower(translate(btrim(title), 'ÉÈÊËÀÂÄÎÏÔÖÛÜÙÇéèêëàâäîïôöûüùç', 'EEEEAAAIIOOUUUCeeeeaaaiioouuuc')) ~ '^impression numerique'
+   order by (slug = any(ARRAY['impression-numerique-grand-format', 'impression-numerique']::text[]::text[])) desc, (archived_at is null) desc, sort, slug limit 1);
+insert into site_settings (key, value) values ('import_fiche_formations', jsonb_build_object('applied_at', now(), 'modules', '["CM Community Manager","Informatique bureautique","Secrétariat bureautique","Infographie","Sérigraphie","Maintenance informatique et réseau","Impression numérique"]'::jsonb))
+           on conflict (key) do nothing;
 insert into site_settings (key, value) values ('business', '{"slogan":"E-man Prod, la référence !","email":"emanprod3@gmail.com","phone":"+22891388405","whatsapp":"+22891388405","sites":[{"label":"Siège","address":"Nouveau Marché de Baguida, Lomé"},{"label":"Annexe","address":"Agbavi, Yésuvito"}],"hours":null}'::jsonb) on conflict (key) do nothing;
 insert into site_settings (key, value) values ('about', '{"title":"E-MAN PROD","lead":"E-MAN PROD est une entreprise togolaise spécialisée dans l’imprimerie, l’infographie, la communication visuelle, la sérigraphie, la personnalisation, la formation professionnelle, l’informatique et les technologies numériques.","activities":["Imprimerie","Infographie","Communication visuelle","Sérigraphie","Personnalisation","Formation professionnelle","Informatique et technologies numériques"]}'::jsonb) on conflict (key) do nothing;
 insert into site_settings (key, value) values ('cars', '{"title":"E-MAN CARS","tagline":"Véhicules neufs et haut de gamme","intro":"E-MAN CARS est la branche commerciale du groupe E-MAN spécialisée dans les véhicules neufs et haut de gamme.","offers":[{"title":"Véhicules neufs","text":"Des véhicules neufs, pour les particuliers comme pour les entreprises."},{"title":"Haut de gamme","text":"Une sélection de véhicules haut de gamme."}],"contactText":"Pour connaître les véhicules disponibles, contactez l’équipe E-MAN CARS."}'::jsonb) on conflict (key) do nothing;
 
 commit;
 
--- Vérification : doit afficher les migrations 001 à 009.
+-- Vérification : doit afficher les migrations 001 à 011.
 select version, name, applied_at from schema_migrations order by version;
 
 -- -----------------------------------------------------------------------------

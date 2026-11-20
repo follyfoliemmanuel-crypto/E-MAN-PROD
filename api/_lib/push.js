@@ -50,6 +50,9 @@ export async function vapidKeys() {
   if (envPub || envPriv) {
     if (!validPair(envPub, envPriv)) throw new Error('VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY invalides ou ne vont pas ensemble. Regénérez-les avec « npm run push:keys ».');
     cachedKeys = { publicKey: envPub, privateKey: envPriv, source: 'env' };
+    // Les clés sont maintenant dans Vercel : la copie gardée en base (même paire) est effacée,
+    // pour que la clé privée ne se trouve plus du tout dans Neon.
+    await query('delete from push_keys where id = 1 and public_key = $1 returning id', [envPub]).catch(() => {});
     return cachedKeys;
   }
   const fresh = generateVapidKeys();

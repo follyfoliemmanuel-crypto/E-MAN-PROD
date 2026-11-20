@@ -9,7 +9,11 @@ const MAX_DEVICES = 10;
 
 export async function pushStatus(userId) {
   let publicKey = null; let error = null;
-  try { publicKey = (await vapidKeys()).publicKey; } catch (err) { error = err.message; }
+  try { publicKey = (await vapidKeys()).publicKey; } catch (err) {
+    // Le détail (noms de variables) reste dans le journal du serveur, jamais dans la réponse.
+    console.error(JSON.stringify({ level: 'error', event: 'push.keys', message: err.message }));
+    error = 'Notifications push indisponibles pour le moment : l’administrateur doit vérifier la configuration.';
+  }
   const devices = await query(
     `select id, device_label, created_at, last_seen_at, last_success_at, failures, endpoint
        from push_subscriptions where user_id = $1 order by last_seen_at desc`, [userId]);

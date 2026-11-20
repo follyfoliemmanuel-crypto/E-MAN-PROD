@@ -7,6 +7,7 @@ import { useConfirm, Loading, EmptyState } from './space/ui.jsx';
 import { SessionFollowUp } from './space/learning.jsx';
 import { useCatalog } from '../lib/catalog.jsx';
 import { Link } from '../lib/router.jsx';
+import { FICHE_REFERENCE } from '../content/fiche-formations.js';
 
 /** Catalogue complet (éléments masqués et sessions passées inclus). */
 function useAdminCatalog() {
@@ -101,7 +102,11 @@ const slugify = (t) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]
 const lines = (t) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 
 function NewTrainingForm({ poles, notify, onDone, onCancel }) {
-  const [f, setF] = useState({ title: '', category_slug: poles[0]?.slug || '', domain: '', summary: '', description: '', objectives: '', program: '', duration: '', level: '', price_fcfa: '', published: false });
+  // Valeurs de départ reprises de la fiche (frais d'inscription, niveau) : modifiables avant de créer.
+  const [f, setF] = useState(() => ({
+    title: '', category_slug: poles[0]?.slug || '', domain: '', summary: '', description: '', objectives: '', program: '', published: false,
+    ...factsOf({ level: FICHE_REFERENCE.level, registration_fee_fcfa: FICHE_REFERENCE.registration_fee_fcfa }),
+  }));
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   return (
@@ -109,7 +114,8 @@ function NewTrainingForm({ poles, notify, onDone, onCancel }) {
       e.preventDefault();
       setBusy(true);
       try {
-        await manage('training.create', { ...f, slug: slugify(f.title), objectives: lines(f.objectives), program: lines(f.program) });
+        const { title, category_slug, domain, summary, description, published } = f;
+        await manage('training.create', { title, category_slug, domain, summary, description, published, ...factsPayload(f), slug: slugify(f.title), objectives: lines(f.objectives), program: lines(f.program) });
         notify(`Formation « ${f.title} » créée${f.published ? ' et publiée' : ' (non publiée)'}.`);
         onDone();
       } catch (err) {
@@ -123,17 +129,14 @@ function NewTrainingForm({ poles, notify, onDone, onCancel }) {
         <label className="field"><span className="fieldLabel">Titre</span><input required minLength={2} maxLength={160} value={f.title} onChange={set('title')} /></label>
         <label className="field"><span className="fieldLabel">Pôle</span><select value={f.category_slug} onChange={set('category_slug')}>{poles.map((p) => <option key={p.slug} value={p.slug}>Pôle {p.number} : {p.title}</option>)}</select></label>
       </div>
-      <div className="fieldRow three">
-        <label className="field"><span className="fieldLabel">Domaine</span><input required minLength={2} maxLength={120} value={f.domain} onChange={set('domain')} placeholder="ex. Bureautique" /></label>
-        <label className="field"><span className="fieldLabel">Durée</span><input maxLength={120} value={f.duration} onChange={set('duration')} placeholder="ex. 6 semaines" /></label>
-        <label className="field"><span className="fieldLabel">Tarif (FCFA)</span><input type="number" min="0" value={f.price_fcfa} onChange={set('price_fcfa')} placeholder="Vide = « Nous consulter »" /></label>
-      </div>
+      <label className="field"><span className="fieldLabel">Domaine</span><input required minLength={2} maxLength={120} value={f.domain} onChange={set('domain')} placeholder="ex. Bureautique" /></label>
       <label className="field"><span className="fieldLabel">Résumé</span><textarea required minLength={10} maxLength={400} rows={2} value={f.summary} onChange={set('summary')} /></label>
       <label className="field"><span className="fieldLabel">Description</span><textarea maxLength={4000} rows={3} value={f.description} onChange={set('description')} /></label>
       <div className="fieldRow">
         <label className="field"><span className="fieldLabel">Objectifs (un par ligne)</span><textarea rows={4} value={f.objectives} onChange={set('objectives')} /></label>
         <label className="field"><span className="fieldLabel">Programme (un module par ligne)</span><textarea rows={4} value={f.program} onChange={set('program')} /></label>
       </div>
+      <TrainingFacts f={f} setF={setF} uid="new" />
       <label className="consent"><input type="checkbox" checked={f.published} onChange={set('published')} /><span>Publier sur le site tout de suite</span></label>
       <div className="formActions"><button className="btn btnPrimary btnSmall" disabled={busy}>{busy ? 'Création…' : 'Créer la formation'}</button><button type="button" className="btn btnGhost btnSmall" onClick={onCancel}>Annuler</button></div>
     </form>
@@ -163,16 +166,114 @@ function TrainingTexts({ c, run, busy }) {
   );
 }
 
+const num = (v) => (v === '' || v === null || v === undefined ? null : Number(v));
+
+/** Liste éditable : ajouter, modifier, supprimer des lignes (durées, frais, conditions). */
+function RowsEditor({ legend, hint, rows, setRows, blank, render, addLabel, max, suggestions }) {
+  const update = (i, patch) => setRows(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  return (
+    <fieldset className="settingGroup rowsEditor">
+      <legend>{legend}</legend>
+      {hint && <small className="muted">{hint}</small>}
+      {rows.length === 0 && <p className="muted rowsEmpty">Aucune ligne pour l’instant.</p>}
+      <ul className="rowsList">
+        {rows.map((r, i) => (
+          <li key={i} className="rowsItem">
+            {render(r, (patch) => update(i, patch), i)}
+            <button type="button" className="iconBtn" onClick={() => setRows(rows.filter((_, j) => j !== i))} aria-label={`Supprimer la ligne ${i + 1} (${legend})`}><Trash2 size={16} aria-hidden="true" /></button>
+          </li>
+        ))}
+      </ul>
+      <div className="rowsAdd">
+        <button type="button" className="btn btnGhost btnSmall" disabled={rows.length >= max} onClick={() => setRows([...rows, { ...blank }])}><Plus size={15} aria-hidden="true" /> {addLabel}</button>
+        {suggestions?.filter((x) => !rows.some((r) => r.label === x)).map((x) => (
+          <button key={x} type="button" className="chipBtn" disabled={rows.length >= max} onClick={() => setRows([...rows, { ...blank, label: x }])}>+ {x}</button>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+/** Durées, prix, frais et conditions d'admission d'une formation : tout est libre et modifiable. */
+export function TrainingFacts({ f, setF, uid }) {
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }));
+  return (
+    <>
+      <RowsEditor
+        legend="Durées proposées" addLabel="Ajouter une durée" max={12} blank={{ label: '', price_fcfa: '', note: '' }}
+        hint="Une ligne par formule. Le prix par durée est facultatif (sinon, le prix de la formation s’applique)."
+        suggestions={FICHE_REFERENCE.duration_suggestions}
+        rows={f.duration_options} setRows={(v) => setF((x) => ({ ...x, duration_options: v }))}
+        render={(r, up, i) => (
+          <>
+            <label className="field"><span className="fieldLabel">Durée</span><input id={`${uid}-d${i}`} aria-label={`Durée ${i + 1}`} required maxLength={120} value={r.label} onChange={(e) => up({ label: e.target.value })} placeholder="ex. 6 mois + stage" /></label>
+            <label className="field"><span className="fieldLabel">Prix pour cette durée (FCFA)</span><input aria-label={`Prix de la durée ${i + 1} (FCFA)`} type="number" min="0" step="500" inputMode="numeric" value={r.price_fcfa ?? ''} onChange={(e) => up({ price_fcfa: e.target.value })} placeholder="Facultatif" /></label>
+            <label className="field"><span className="fieldLabel">Précision</span><input aria-label={`Précision de la durée ${i + 1}`} maxLength={160} value={r.note || ''} onChange={(e) => up({ note: e.target.value })} placeholder="ex. cours du soir" /></label>
+          </>
+        )}
+      />
+      <fieldset className="settingGroup">
+        <legend>Prix et frais</legend>
+        <div className="fieldRow three">
+          <label className="field"><span className="fieldLabel">Frais d’inscription (FCFA)</span><input type="number" min="0" step="500" inputMode="numeric" value={f.registration_fee_fcfa} onChange={set('registration_fee_fcfa')} placeholder="Vide = non affiché" /></label>
+          <label className="field"><span className="fieldLabel">Prix de la formation (FCFA)</span><input type="number" min="0" step="500" inputMode="numeric" value={f.price_fcfa} onChange={set('price_fcfa')} placeholder="Vide = « Nous consulter »" /></label>
+          <label className="field"><span className="fieldLabel">Précision sur le prix</span><input maxLength={200} value={f.price_note} onChange={set('price_note')} placeholder="ex. par mois, matériel compris" /></label>
+        </div>
+        <label className="field"><span className="fieldLabel">Modalités de paiement</span><textarea rows={2} maxLength={600} value={f.payment_terms} onChange={set('payment_terms')} placeholder="ex. inscription à l’entrée, puis paiement mensuel ; Mobile Money accepté" /></label>
+      </fieldset>
+      <RowsEditor
+        legend="Frais supplémentaires" addLabel="Ajouter des frais" max={12} blank={{ label: '', amount_fcfa: '' }}
+        hint="ex. kit, tenue, attestation, stage. Laissez vide s’il n’y en a pas."
+        rows={f.extra_fees} setRows={(v) => setF((x) => ({ ...x, extra_fees: v }))}
+        render={(r, up, i) => (
+          <>
+            <label className="field"><span className="fieldLabel">Intitulé</span><input aria-label={`Frais supplémentaires ${i + 1} : intitulé`} required minLength={2} maxLength={120} value={r.label} onChange={(e) => up({ label: e.target.value })} placeholder="ex. Kit de formation" /></label>
+            <label className="field"><span className="fieldLabel">Montant (FCFA)</span><input aria-label={`Frais supplémentaires ${i + 1} : montant (FCFA)`} type="number" required min="0" step="500" inputMode="numeric" value={r.amount_fcfa ?? ''} onChange={(e) => up({ amount_fcfa: e.target.value })} /></label>
+          </>
+        )}
+      />
+      <fieldset className="settingGroup">
+        <legend>Admission</legend>
+        <label className="field"><span className="fieldLabel">Niveau scolaire requis</span><input maxLength={120} value={f.level} onChange={set('level')} placeholder={`ex. ${FICHE_REFERENCE.level}`} /></label>
+      </fieldset>
+      <RowsEditor
+        legend="Conditions d’admission" addLabel="Ajouter une condition" max={20} blank={{ label: '' }}
+        hint="Une condition par ligne : pièces à fournir, âge, matériel, entretien…"
+        rows={f.admission_requirements} setRows={(v) => setF((x) => ({ ...x, admission_requirements: v }))}
+        render={(r, up, i) => (
+          <label className="field"><span className="fieldLabel">Condition</span><input aria-label={`Condition d’admission ${i + 1}`} required minLength={2} maxLength={300} value={r.label} onChange={(e) => up({ label: e.target.value })} placeholder="ex. Savoir lire et écrire le français" /></label>
+        )}
+      />
+    </>
+  );
+}
+
+/** Valeurs du formulaire → données envoyées au serveur (montants en nombres, listes nettoyées). */
+export function factsPayload(f) {
+  return {
+    level: f.level, price_fcfa: num(f.price_fcfa), price_note: f.price_note, payment_terms: f.payment_terms,
+    registration_fee_fcfa: num(f.registration_fee_fcfa),
+    duration_options: f.duration_options.filter((o) => o.label.trim()).map((o) => ({ label: o.label.trim(), price_fcfa: num(o.price_fcfa), note: o.note?.trim() || null })),
+    extra_fees: f.extra_fees.filter((o) => o.label.trim()).map((o) => ({ label: o.label.trim(), amount_fcfa: num(o.amount_fcfa) })),
+    admission_requirements: f.admission_requirements.map((r) => r.label.trim()).filter(Boolean),
+  };
+}
+export const factsOf = (c = {}) => ({
+  level: c.level || '', price_fcfa: c.price_fcfa ?? '', price_note: c.price_note || '', payment_terms: c.payment_terms || '',
+  registration_fee_fcfa: c.registration_fee_fcfa ?? '',
+  duration_options: (c.duration_options?.length ? c.duration_options : c.duration ? [{ label: c.duration }] : []).map((o) => ({ label: o.label || '', price_fcfa: o.price_fcfa ?? '', note: o.note || '' })),
+  extra_fees: (c.extra_fees || []).map((o) => ({ label: o.label || '', amount_fcfa: o.amount_fcfa ?? '' })),
+  admission_requirements: (c.admission_requirements?.length ? c.admission_requirements : c.prerequisites ? [c.prerequisites] : []).map((label) => ({ label })),
+});
+
 function CourseAdminRow({ c, notify, refresh }) {
   const [busy, run] = useAction(notify, refresh);
   const confirm = useConfirm();
-  const [f, setF] = useState(() => ({
-    duration: c.duration || '', level: c.level || '', prerequisites: c.prerequisites || '',
-    price_fcfa: c.price_fcfa ?? '', price_note: c.price_note || '', certificate: c.certificate || '', published: c.published,
-  }));
+  const [f, setF] = useState(() => ({ ...factsOf(c), certificate: c.certificate || '', published: c.published }));
   const [rules, setRules] = useState(() => ({ kind: c.certificate_rules?.kind || '', min_attendance: c.certificate_rules?.min_attendance ?? '', evaluation: Boolean(c.certificate_rules?.evaluation) }));
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   const upcoming = c.sessions.filter((s) => (s.ends_on || s.starts_on) >= new Date().toISOString().slice(0, 10));
+  const priced = c.price_fcfa !== null || c.duration_options?.some((o) => o.price_fcfa != null);
 
   return (
     <li className="adminItem">
@@ -181,7 +282,7 @@ function CourseAdminRow({ c, notify, refresh }) {
           <span className="adminItemTitle">{c.title}</span>
           <span className="adminItemMeta">
             {c.archived_at ? <span className="tag off">Archivée</span> : !c.published && <span className="tag off">Masquée</span>}
-            <span className={'tag ' + (c.price_fcfa !== null ? 'done' : 'new')}>{c.price_fcfa !== null ? 'Tarif renseigné' : 'Tarif à renseigner'}</span>
+            <span className={'tag ' + (priced ? 'done' : 'new')}>{priced ? 'Prix renseigné' : 'Prix à renseigner'}</span>
             <span className="tag work">{upcoming.length} session{upcoming.length > 1 ? 's' : ''} à venir</span>
           </span>
         </summary>
@@ -190,19 +291,12 @@ function CourseAdminRow({ c, notify, refresh }) {
           onSubmit={(e) => {
             e.preventDefault();
             const certificate_rules = { kind: rules.kind || null, min_attendance: rules.min_attendance === '' ? null : Number(rules.min_attendance), evaluation: rules.evaluation };
-            run('course.update', { slug: c.slug, ...f, certificate_rules }, `Formation « ${c.title} » enregistrée.`);
+            run('course.update', { slug: c.slug, ...factsPayload(f), certificate: f.certificate, published: f.published, certificate_rules }, `Formation « ${c.title} » enregistrée.`);
           }}
         >
-          <div className="fieldRow three">
-            <label className="field"><span className="fieldLabel">Durée</span><input value={f.duration} onChange={set('duration')} placeholder="ex. 3 mois, 40 heures" /></label>
-            <label className="field"><span className="fieldLabel">Niveau</span><input value={f.level} onChange={set('level')} placeholder="ex. Débutant" /></label>
-            <label className="field"><span className="fieldLabel">Tarif (FCFA)</span><input type="number" min="0" step="500" inputMode="numeric" value={f.price_fcfa} onChange={set('price_fcfa')} placeholder="Vide = « Nous consulter »" /></label>
-          </div>
-          <div className="fieldRow">
-            <label className="field"><span className="fieldLabel">Précision sur le tarif</span><input value={f.price_note} onChange={set('price_note')} placeholder="ex. inscription comprise, paiement en 2 fois" /></label>
-            <label className="field"><span className="fieldLabel">Document remis à l’issue</span><input value={f.certificate} onChange={set('certificate')} placeholder="ex. attestation de formation (si délivrée)" /></label>
-          </div>
-          <label className="field"><span className="fieldLabel">Prérequis</span><input value={f.prerequisites} onChange={set('prerequisites')} placeholder="ex. savoir utiliser un ordinateur" /></label>
+          <TrainingFacts f={f} setF={setF} uid={`c-${c.slug}`} />
+          <label className="field"><span className="fieldLabel">Document remis à l’issue</span><input value={f.certificate} onChange={set('certificate')} placeholder="ex. attestation de formation (si délivrée)" /></label>
+          <p className="muted">Photo de la formation : <Link to="/espace?section=images">Images et bannières</Link>, rubrique Formations.</p>
           <fieldset className="settingGroup">
             <legend>Conditions de délivrance</legend>
             <div className="fieldRow three">

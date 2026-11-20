@@ -11,7 +11,7 @@ const PERMISSION_LABELS = {
   clients: 'Fiches clients (lecture et notes)',
 };
 const ROLE_LABELS = { client: 'Client', staff: 'Staff', admin: 'Administrateur' };
-const METHOD_LABELS = { password: 'Mot de passe', google: 'Google', reset: 'Lien de réinitialisation' };
+const METHOD_LABELS = { password: 'Mot de passe', google: 'Google', reset: 'Lien de réinitialisation', verify: 'Lien de confirmation' };
 
 /** Nom lisible d'un navigateur à partir de son « user agent ». */
 function device(ua = '') {

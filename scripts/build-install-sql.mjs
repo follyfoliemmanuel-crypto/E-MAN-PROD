@@ -23,6 +23,7 @@ const lit = (v) => {
   if (v === null || v === undefined) return 'null';
   if (typeof v === 'number') return String(v);
   if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (Array.isArray(v)) return `ARRAY[${v.map(lit).join(', ')}]::text[]`;
   return `'${String(v).replace(/'/g, "''")}'`;
 };
 /** Remplace $1, $2… par des valeurs SQL (du plus grand au plus petit numéro). */

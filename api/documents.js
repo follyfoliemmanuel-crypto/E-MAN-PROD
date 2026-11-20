@@ -10,25 +10,24 @@
 //   GET ?verify=<code>                    vérification publique d'une attestation (sans connexion)
 //   POST {action: 'payment' | 'invoice' | 'invoice_cancel' | 'attendance' | 'result' | 'certificate' | 'certificate_revoke', …}
 import { z } from 'zod';
-import { handler, send, readJson, HttpError } from './_lib/http.js';
+import { handler, send, readJson, HttpError, siteUrl, clientIp } from './_lib/http.js';
 import { requireUser, rateLimit } from './_lib/auth.js';
 import { actorOf, isTeam } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
 import * as billing from './_lib/services/billing.js';
 import * as learning from './_lib/services/learning.js';
 import { invoicePdf, receiptPdf, attendanceSheetPdf, certificatePdf, sendPdf } from './_lib/pdf.js';
-import { siteUrl } from './_lib/emails.js';
 
 const id = (label) => s.uuid(label);
-const origin = (req) => siteUrl() || `https://${req.headers['x-forwarded-host'] || req.headers.host}`;
+// Adresse du site pour le lien de vérification imprimé sur l'attestation (jamais tirée d'un en-tête falsifiable en production).
+const origin = (req) => siteUrl(req);
 
 export default handler({
   async GET(req, res) {
     const q = req.query || {};
     if (q.verify !== undefined) {
       // Public : vérifier qu'une attestation présentée est authentique.
-      const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
-      await rateLimit(`verify:${ip}`, 30, 10, 'Trop de vérifications. Réessayez dans quelques minutes.');
+      await rateLimit(`verify:${clientIp(req)}`, 30, 10, 'Trop de vérifications. Réessayez dans quelques minutes.');
       const code = s.parse(z.string().trim().regex(/^[0-9A-Fa-f]{16}$/, 'Code de vérification invalide (16 caractères).'), q.verify);
       return send(res, 200, await learning.verifyCertificate(code));
     }
@@ -68,7 +67,7 @@ export default handler({
       case 'payment': {
         const p = s.parse(z.object({
           order_id: id('Commande'),
-          amount_fcfa: z.number({ invalid_type_error: 'Montant invalide.' }).int('Montant : nombre entier de FCFA.').refine((n) => n !== 0 && Math.abs(n) <= 1e10, 'Montant invalide.'),
+          amount_fcfa: z.number({ invalid_type_error: 'Montant invalide.' }).int('Montant : nombre entier de FCFA.').refine((n) => n !== 0 && Math.abs(n) <= 2e9, 'Montant invalide.'),
           method: s.oneOf([...billing.PAYMENT_METHODS, 'correction'], 'Moyen de paiement'),
           reference: s.text('Référence', { max: 120 }),
           received_on: s.date('Date du paiement'),

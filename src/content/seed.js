@@ -6,6 +6,8 @@
 // prérequis, attestations, dates et places restent vides (null) et se
 // renseignent depuis l'administration.
 
+import { ficheStatements, FICHE_MODULES, FICHE_REFERENCE } from './fiche-formations.js';
+
 export const PRESTATIONS = [
   {
     slug: 'imprimerie',
@@ -79,6 +81,7 @@ export const POLES = [
 
 const course = (c) => ({
   duration: null, level: null, prerequisites: null, price_fcfa: null, price_note: null, certificate: null,
+  duration_options: [], registration_fee_fcfa: null, extra_fees: [], payment_terms: null, admission_requirements: [],
   ...c,
 });
 
@@ -223,6 +226,12 @@ export const GALLERY_CATEGORIES = [
   { slug: 'packaging', label: 'Packaging' },
 ];
 
+/** Formations de départ + modules de la fiche absents du départ (mode démonstration, pages pré-rendues). */
+export const ALL_COURSES = [
+  ...COURSES.map((c) => (FICHE_MODULES.some((m) => m.slugs.includes(c.slug)) ? { ...c, level: FICHE_REFERENCE.level, registration_fee_fcfa: FICHE_REFERENCE.registration_fee_fcfa } : c)),
+  ...FICHE_MODULES.filter((m) => m.create).map((m) => course({ ...m.create, level: FICHE_REFERENCE.level, registration_fee_fcfa: FICHE_REFERENCE.registration_fee_fcfa, sort: 90 })),
+];
+
 /** Requêtes de chargement initial : insertion sans écraser l'existant. */
 export function seedStatements() {
   const q = [];
@@ -248,6 +257,8 @@ export function seedStatements() {
       params: [c.slug, c.pole_slug, c.title, c.domain, c.summary, c.description, JSON.stringify(c.objectives), JSON.stringify(c.program), c.placeholder, c.sort],
     });
   }
+  // Fiche de renseignements : les 7 modules, sans doublon, une seule fois (voir fiche-formations.js).
+  q.push(...ficheStatements());
   for (const [key, value] of Object.entries(CONTENT)) {
     q.push({
       text: `insert into site_settings (key, value) values ($1, $2::jsonb) on conflict (key) do nothing returning key`,

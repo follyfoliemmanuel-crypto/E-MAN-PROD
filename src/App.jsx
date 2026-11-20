@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppContext } from './context.js';
 import { auth, space, DEMO } from './lib/api.js';
 import { usePath, navigate, scrollToHash } from './lib/router.jsx';
@@ -78,12 +78,27 @@ export default function App() {
     if (user?.id) import('./lib/push.js').then((m) => m.restorePush()).catch(() => {});
   }, [user?.id]);
 
+  const refreshRef = useRef(refreshUnread);
+  refreshRef.current = refreshUnread;
   useEffect(() => {
-    refreshUnread();
+    refreshRef.current();
     if (!user) return undefined;
+    const refreshUnread = () => refreshRef.current();
+    // Temps réel (SSE) : compteur et notifications à jour dès qu'un évènement arrive.
+    let stop = () => {};
+    import('./lib/live.js').then(({ startLive }) => {
+      stop = startLive({
+        onUnread: (n) => { if (Number.isInteger(n)) setUnread(n); },
+        onFallbackPoll: refreshUnread,
+        onNotification: (n) => {
+          if (n.kind?.startsWith('message.') && document.visibilityState === 'visible') notify(n.title || 'Nouveau message');
+        },
+      });
+    }).catch(() => {});
+    // Filet de sécurité : relecture lente du compteur, même si le flux tombe.
     const t = setInterval(() => { if (document.visibilityState === 'visible') refreshUnread(); }, 60000);
-    return () => clearInterval(t);
-  }, [refreshUnread, user]);
+    return () => { stop(); clearInterval(t); };
+  }, [user?.id]);
   // Coordonnées modifiées dans l'admin : appliquées à tout le site (re-rendu complet).
   const [, setContentVersion] = useState(0);
   const applyBusiness = useCallback((content) => {
@@ -118,6 +133,8 @@ export default function App() {
           setUser(r.user);
           setMethods({ google: Boolean(r.google), mail: Boolean(r.mail) });
           if (google === 'google' && r.user) notify('Vous êtes connecté avec Google.');
+          // Lien « Me connecter » de l'e-mail envoyé à une adresse déjà inscrite.
+          if (google === 'rappel' && !r.user) setModal({ type: 'auth', mode: 'login' });
           const GOOGLE_ERRORS = {
             'google-echec': 'La connexion avec Google n’a pas abouti. Réessayez, ou connectez-vous avec votre e-mail.',
             'google-annule': 'Connexion avec Google annulée.',

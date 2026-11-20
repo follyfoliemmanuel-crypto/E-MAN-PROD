@@ -1,4 +1,5 @@
 import { HttpError } from './http.js';
+import { validDay } from './schemas.js';
 
 export const ORDER_STATUSES = ['En attente', 'Devis envoyé', 'Validée', 'En production', 'Terminée', 'Annulée'];
 export const PAYMENT_STATUSES = ['Non payé', 'Acompte payé', 'Payé'];
@@ -36,7 +37,7 @@ export function email(value, { required = false } = {}) {
 
 export function password(value) {
   const v = typeof value === 'string' ? value : '';
-  if (v.length < 8) throw new HttpError(400, 'Mot de passe : 8 caractères minimum.');
+  if (v.length < 10) throw new HttpError(400, 'Mot de passe : 10 caractères minimum.');
   if (v.length > 200) throw new HttpError(400, 'Mot de passe trop long.');
   return v;
 }
@@ -47,7 +48,7 @@ export function oneOf(value, list, label) {
 }
 
 export function uuid(value) {
-  if (typeof value !== 'string' || !/^[0-9a-f-]{36}$/i.test(value)) throw new HttpError(400, 'Identifiant invalide.');
+  if (typeof value !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) throw new HttpError(400, 'Identifiant invalide.');
   return value;
 }
 
@@ -81,9 +82,7 @@ export function date(value, label, { required = false } = {}) {
     if (required) throw new HttpError(400, `${label} : champ obligatoire.`);
     return null;
   }
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value))) {
-    throw new HttpError(400, `${label} invalide (format AAAA-MM-JJ).`);
-  }
+  if (!validDay(value)) throw new HttpError(400, `${label} invalide (format AAAA-MM-JJ, entre 1900 et 2200).`);
   return value;
 }
 

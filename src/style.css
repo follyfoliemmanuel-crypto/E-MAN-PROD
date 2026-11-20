@@ -1344,3 +1344,16 @@ details.spaceBlock > summary { cursor: pointer; }
 .deviceList li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line, #e3e6ec); border-radius: 8px; }
 .deviceList li > span { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .deviceList .iconBtn { min-width: 40px; min-height: 40px; }
+
+/* Formations : listes modifiables (durées, frais, conditions) */
+.rowsEditor > small { display: block; margin-bottom: 8px; }
+.rowsList { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rowsItem { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; padding: 10px; border: 1px solid var(--line, #e3e6ec); border-radius: 8px; }
+.rowsItem .field { flex: 1 1 180px; margin: 0; }
+.rowsItem .iconBtn { min-width: 40px; min-height: 40px; }
+.rowsEmpty { margin: 4px 0 8px; }
+.rowsAdd { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.chipBtn { min-height: 36px; padding: 6px 12px; border: 1px dashed var(--line-strong, #b9c0cc); border-radius: 999px; background: transparent; font: inherit; font-size: .9rem; cursor: pointer; }
+.chipBtn:hover:not(:disabled) { border-style: solid; }
+.chipBtn:disabled { opacity: .5; cursor: default; }
+.factList { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }

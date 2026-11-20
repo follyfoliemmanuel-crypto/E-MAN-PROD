@@ -1,5 +1,35 @@
 # Historique des versions et des vérifications
 
+## v3.9.0 — Messagerie en temps réel et derniers points de sécurité
+
+- Temps réel (Server-Sent Events) : messages, pastille de non lues, notifications, nouvelles commandes et changements de statut s'affichent en environ 1 s, sans recharger la page. Reconnexion automatique, aucun doublon, droits inchangés. Détails et limites de Vercel : docs/MESSAGERIE-TEMPS-REEL.md.
+- Inscription sans révéler les adresses inscrites (quand les e-mails sont configurés) ; le lien de confirmation ouvre la session.
+- Essais de mot de passe limités par compte + connexion : un tiers ne peut plus bloquer le titulaire.
+- Signatures de l'API Cloudinary en SHA-256 (retour à SHA-1 possible).
+- Compte de base limité eman_app (npm run db:app-role) ; DATABASE_URL_OWNER réservé aux migrations.
+- Dependabot et npm run audit ; npm run push:export-keys pour sortir les clés VAPID de Neon sans désabonner les appareils.
+- Migration 011 (additive) : une session peut aussi s'ouvrir par le lien de confirmation.
+
+## v3.8.0 — Audit de sécurité approfondi
+
+Les constats, leurs causes et les corrections sont dans docs/AUDIT-SECURITE.md.
+- Entrées : caractères de contrôle refusés partout ; montants plafonnés à la capacité de la base ; dates entre 1900 et 2200 ; identifiants stricts. Les erreurs de données Postgres donnent un 400 neutre. Avant, 10 cas provoquaient une erreur 500.
+- Téléversements : 30 envois non terminés au plus par compte, nettoyage quotidien automatique (Vercel Cron, CRON_SECRET), route de stockage local fermée en ligne.
+- Données sensibles : le diagnostic public n'affiche que des oui/non ; erreurs 500 sans détail technique, avec une référence ; journaux sans valeurs Postgres.
+- Divers : adresse du site non déduite de l'en-tête Host, IP fiable sur Vercel, seul le cookie __Host- est lu en HTTPS, plus de sel en clair dans le code, dépendances minimales alignées sur des versions corrigées.
+
+## v3.7.0 — Rubrique Formation dynamique et modules de la fiche
+
+- 7 modules de la fiche comparés aux formations en base. 5 existaient déjà et sont conservés tels quels ; 2 sont ajoutés (Community manager (CM), Secrétariat bureautique). Aucun doublon, aucune suppression, inscriptions intactes. L'import ne s'exécute qu'une fois (docs/FORMATIONS.md).
+- Administration (même écran Formations, complété) :
+  - plusieurs durées, avec un prix facultatif par durée ;
+  - frais d'inscription, prix, frais supplémentaires, modalités de paiement ;
+  - niveau requis et conditions d'admission, à ajouter, modifier ou supprimer.
+  Les durées de la fiche se proposent en un clic. Rien n'est figé dans le code.
+- Site public : la fiche d'une formation affiche les durées et prix, les frais et une section « Conditions d'admission » ; les cartes montrent la durée et les frais d'inscription.
+- Contrôles : montants entiers positifs, listes limitées, titres en double refusés ; droit « formations » obligatoire.
+- Migration 010 (additive). Les anciens champs durée et prérequis sont repris dans les nouvelles listes et restent tenus à jour.
+
 ## v3.6.0 — Notifications push (téléphone et ordinateur)
 
 - PWA (manifeste, icônes 192/512/maskable) et service worker `/sw.js` limité aux notifications (aucun cache, aucune requête interceptée).

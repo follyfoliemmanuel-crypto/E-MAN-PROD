@@ -1,7 +1,7 @@
 {
   "name": "eman-prod-digital",
   "private": true,
-  "version": "3.6.0",
+  "version": "3.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -21,6 +21,9 @@
     "db:sql": "node scripts/build-install-sql.mjs",
     "check": "node scripts/check.mjs",
     "push:keys": "node scripts/push-keys.mjs",
+    "push:export-keys": "node scripts/push-export-keys.mjs",
+    "db:app-role": "node scripts/db-app-role.mjs",
+    "audit": "npm audit --omit=dev && npm audit",
     "storage:check": "node scripts/storage-check.mjs",
     "backup": "node scripts/files.mjs backup-all",
     "files:backup": "node scripts/files.mjs backup",
@@ -29,7 +32,7 @@
     "files:migrate": "node scripts/files.mjs migrate"
   },
   "dependencies": {
-    "@neondatabase/serverless": "^1.0.2",
+    "@neondatabase/serverless": "^1.2.1",
     "lucide-react": "^0.468.0",
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
@@ -37,9 +40,9 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "pg": "^8.13.1",
-    "vite": "^6.0.7"
+    "@vitejs/plugin-react": "^4.7.0",
+    "pg": "^8.23.1",
+    "vite": "^6.4.6"
   },
   "engines": {
     "node": ">=24.7"

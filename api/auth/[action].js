@@ -123,6 +123,17 @@ const actions = {
     out.ok = Boolean(out.database?.ok && out.email.ok && out.google.ok && out.files.ok);
     out.to_fix = fix;
     out.reminder = 'Une variable ajoutée dans Vercel ne s’applique qu’après « Redeploy ».';
+    // En ligne, le détail (noms de variables, version du schéma, domaine d'envoi, adresse de
+    // retour Google) n'est montré qu'à l'administrateur connecté : un visiteur ne voit que des oui/non.
+    const viewer = out.database?.ok ? await currentUser(req).catch(() => null) : null;
+    if (env.VERCEL && viewer?.role !== 'admin') {
+      return send(res, 200, {
+        checked_at: out.checked_at, ok: out.ok,
+        database: { ok: Boolean(out.database?.ok) }, email: { ok: out.email.ok }, google: { ok: out.google.ok }, files: { ok: out.files.ok },
+        detail: out.ok ? null : 'Connectez-vous avec le compte administrateur puis rouvrez cette adresse pour voir quoi corriger (ou consultez docs/CONFIGURATION.md).',
+        reminder: out.reminder,
+      });
+    }
     send(res, 200, out);
   },
 
@@ -143,7 +154,30 @@ const actions = {
     await rateLimit(`signup:ip:${clientIp(req)}`, 10, 60);
 
     // Le rôle n'est jamais lu dans la requête : tout nouveau compte est « client ».
-    const exists = await one('select id from users where lower(email) = $1', [email]);
+    const exists = await one('select id, first_name, full_name from users where lower(email) = $1', [email]);
+    // Inscription sans révéler qui est inscrit : quand les e-mails fonctionnent, la réponse est la même
+    // que l'adresse soit libre ou déjà prise. Le compte ne s'ouvre qu'avec le lien reçu dans la boîte
+    // (preuve que l'adresse est à la personne) ; une adresse déjà inscrite reçoit un rappel de connexion.
+    // (En développement sans fournisseur, le compte s'ouvre tout de suite pour faciliter les essais.)
+    if (mailConfigured()) {
+      const hash = await hashPassword(pw); // même travail dans les deux cas (pas de différence de durée)
+      if (exists) {
+        await deliver(req, { to: email, userId: exists.id, template: 'account_exists', link: `${siteUrl(req)}/espace?connexion=rappel`, vars: { prenom: exists.first_name || exists.full_name } });
+        await logSecurity(req, 'auth.signup_existing', { userId: exists.id, data: { email: maskEmail(email) } });
+        return send(res, 202, { pending: true });
+      }
+      const created = await one(
+        `insert into users (email, password_hash, full_name, first_name, last_name, phone, password_changed_at)
+         values ($1, $2, $3, $4, $5, $6, now())
+         returning id, email, full_name, first_name, last_name, phone, role, permissions, email_verified_at, true as has_password`,
+        [email, hash, `${first} ${last}`, first, last, phone],
+      );
+      await logSecurity(req, 'auth.signup', { userId: created.id, data: { method: 'password', email: maskEmail(email), pending: true } });
+      const verification = await sendVerification(req, created);
+      await announceClient(created, 'e-mail et mot de passe');
+      return send(res, 202, { pending: true, ...(verification === 'terminal' ? { verification } : {}) });
+    }
+    // Sans fournisseur d'e-mails (aucun lien ne peut être envoyé) : ouverture immédiate du compte.
     if (exists) throw new HttpError(409, 'Un compte existe déjà avec cette adresse. Connectez-vous, ou utilisez « Mot de passe oublié ».');
     const user = await one(
       `insert into users (email, password_hash, full_name, first_name, last_name, phone, password_changed_at)
@@ -165,8 +199,12 @@ const actions = {
     const email = v.email(body.email, { required: true });
     const pw = typeof body.password === 'string' ? body.password.slice(0, 200) : '';
     try {
-      await rateLimit(`login:email:${email}`, 8, 15, 'Trop de tentatives pour ce compte. Réessayez dans 15 minutes, ou utilisez « Mot de passe oublié ».');
+      // Limite par compte ET par connexion : un tiers qui essaie des mots de passe depuis son réseau
+      // ne bloque plus le vrai titulaire, qui se connecte d'ailleurs. Un plafond large par compte
+      // freine aussi les attaques réparties sur beaucoup d'adresses IP.
+      await rateLimit(`login:email-ip:${email}|${clientIp(req)}`, 8, 15, 'Trop de tentatives pour ce compte. Réessayez dans 15 minutes, ou utilisez « Mot de passe oublié ».');
       await rateLimit(`login:ip:${clientIp(req)}`, 30, 15);
+      await rateLimit(`login:email:${email}`, 60, 60, 'Trop de tentatives sur ce compte depuis des connexions différentes. Réessayez dans une heure, ou utilisez « Mot de passe oublié ».');
     } catch (err) {
       await logSecurity(req, 'security.rate_limited', { data: { what: 'login', email: maskEmail(email) } });
       throw err;
@@ -234,8 +272,11 @@ const actions = {
     const body = await readJson(req);
     await rateLimit(`verify:ip:${clientIp(req)}`, 20, 60);
     const userId = await consumeToken(body.token, 'verify');
-    await one('update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1 returning id', [userId]);
+    const row = await one('update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1 and disabled_at is null returning id', [userId]);
+    if (!row) throw new HttpError(403, 'Ce compte est désactivé.');
     await logSecurity(req, 'auth.email_verified', { userId });
+    // Le lien prouve que la boîte appartient à la personne : il ouvre sa session (inscription par e-mail).
+    await createSession(req, res, userId, { method: 'verify' });
     // Adresse désormais prouvée : le compte d'E-MAN PROD devient administrateur.
     await promoteOwner(req, userId);
     const user = await one('select * from users where id = $1', [userId]);

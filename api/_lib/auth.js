@@ -3,7 +3,7 @@
 //   scrypt sont remplacés automatiquement à la connexion suivante ;
 // - sessions par cookie HttpOnly, renouvelées toutes les 24 h, révocables ;
 // - rôles ADMIN / STAFF / CLIENT lus en base à chaque requête, jamais fournis par le navigateur.
-import crypto, { scrypt, randomBytes, timingSafeEqual, createHash } from 'node:crypto';
+import crypto, { scrypt, randomBytes, randomInt, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { query, one } from './db.js';
 import { HttpError, isHttps, clientIp } from './http.js';
@@ -87,7 +87,8 @@ export function checkPassword(password, { email = '', name = '' } = {}) {
 export const sha256 = (v) => createHash('sha256').update(v).digest('hex');
 export const newToken = () => randomBytes(32).toString('base64url');
 /** Empreinte de l'adresse IP pour le journal (on ne garde pas l'adresse elle-même). */
-export const ipHash = (req) => sha256(`${clientIp(req)}|${process.env.AUTH_SECRET || 'eman-prod-journal'}`).slice(0, 16);
+// Sel secret : AUTH_SECRET, sinon une valeur que seul le serveur connaît (jamais une constante du code).
+export const ipHash = (req) => sha256(`${clientIp(req)}|${process.env.AUTH_SECRET || sha256(process.env.DATABASE_URL || process.pid + String(process.hrtime.bigint()))}`).slice(0, 16);
 
 // --- Cookies ---------------------------------------------------------------------
 // En HTTPS, le préfixe « __Host- » oblige le navigateur à n'accepter ce cookie que s'il
@@ -116,7 +117,8 @@ export function appendCookie(res, value) {
   res.setHeader('Set-Cookie', prev ? [].concat(prev, value) : value);
 }
 
-const sessionToken = (req) => readCookie(req, cookieName(req)) || readCookie(req, COOKIE_DEV);
+// En HTTPS, seul le cookie « __Host- » est lu : un cookie sans ce préfixe (posé par un autre site du même domaine) est ignoré.
+const sessionToken = (req) => readCookie(req, cookieName(req)) || (secureContext(req) ? null : readCookie(req, COOKIE_DEV));
 
 // --- Sessions ------------------------------------------------------------------------
 export const SESSION = { maxDays: 30, idleDays: 14, rotateHours: 24, graceSeconds: 60, perUser: 10 };
@@ -290,7 +292,7 @@ export async function rateLimit(bucket, max, minutes, message = 'Trop de tentati
   );
   if (n >= max) throw new HttpError(429, message);
   await query('insert into rate_events (bucket) values ($1) returning bucket', [bucket]);
-  if (Math.random() < 0.02) {
+  if (randomInt(50) === 0) { // ménage occasionnel (1 fois sur 50)
     await query(`delete from rate_events where created_at < now() - interval '2 days' returning bucket`);
     await query(`delete from oauth_states where created_at < now() - interval '1 hour' returning state_hash`);
     await query(`delete from sessions where expires_at < now() or last_seen_at < now() - ($1 || ' days')::interval returning id`, [String(SESSION.idleDays)]);

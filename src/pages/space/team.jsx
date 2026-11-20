@@ -2,6 +2,7 @@
 // assistance, contenu du site, collaborateurs. Chaque écran n'est montré qu'aux comptes qui
 // ont le droit correspondant ; le serveur revérifie ce droit à chaque requête.
 import React, { useState } from 'react';
+import { useLive } from '../../lib/live.js';
 import { Plus, Trash2, Search, MessageCircle } from 'lucide-react';
 import { useCatalog } from '../../lib/catalog.jsx';
 import { DEMO, space, manage, fetchCatalog, security, formatAmount, formatDate, QUOTE_LABELS, ORDER_LABELS } from '../../lib/api.js';
@@ -260,6 +261,7 @@ export function TeamCreateForm({ kind, notify, onDone, onCancel }) {
 // ---------------------------------------------------------------------------
 export function SupportInbox({ notify, params }) {
   const [{ data, error, loading }, reload] = useLoad(() => space.supportThreads(), []);
+  useLive((n) => n.kind.startsWith('message.') && String(n.link || '').includes('assistance'), () => reload(), []);
   const [open, setOpen] = useState(params.client || null);
   return (
     <>

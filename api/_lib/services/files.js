@@ -150,6 +150,10 @@ export async function createUpload(actor, { purpose, target_id: targetId = null,
     throw new HttpError(413, `Fichier trop volumineux : ${Math.round((max / MB) * 10) / 10} Mo maximum${max < rules.maxBytes ? '. Pour un fichier plus lourd, envoyez-le-nous sur WhatsApp' : ''}.`);
   }
   await assertCanAttach(actor, purpose, targetId);
+  // Envois préparés mais jamais confirmés : plafonnés, pour qu'un compte ne puisse pas remplir
+  // le stockage avec des fichiers non vérifiés (ils sont effacés au nettoyage après 24 h).
+  const [{ pending }] = await query(`select count(*)::int as pending from uploaded_files where owner_id = $1 and status = 'pending' and created_at > now() - interval '24 hours'`, [actor.id]);
+  if (pending >= 30) throw new HttpError(429, 'Trop d’envois non terminés. Réessayez demain ou contactez-nous.');
   const column = TARGET_COLUMN[purpose];
   if (rules.perTarget && column) {
     const [{ n }] = await query(`select count(*)::int as n from uploaded_files where ${column} = $1 and status <> 'rejected'`, [targetId]);

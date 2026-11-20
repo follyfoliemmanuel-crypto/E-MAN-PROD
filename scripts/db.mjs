@@ -39,7 +39,8 @@ function fail(message) {
 }
 
 loadEnv();
-const url = process.env.DATABASE_URL;
+// Migrations et outils : compte propriétaire (DATABASE_URL_OWNER) s'il existe, sinon DATABASE_URL.
+const url = process.env.DATABASE_URL_OWNER || process.env.DATABASE_URL;
 if (!url) fail('DATABASE_URL est vide. Copiez .env.example vers .env et renseignez-la.');
 
 const local = /@(localhost|127\.0\.0\.1)[:/]/.test(url);

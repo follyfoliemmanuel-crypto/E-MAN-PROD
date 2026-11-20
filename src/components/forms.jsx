@@ -276,6 +276,11 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
           : 'La réinitialisation par e-mail n’est pas encore activée. Écrivez-nous sur WhatsApp pour récupérer votre compte.');
       } else if (mode === 'signup') {
         const r = await auth.signup({ first_name: f.first_name, last_name: f.last_name, phone: f.phone, email: f.email, password: f.password });
+        if (r.pending) {
+          // Même réponse que l'adresse soit nouvelle ou déjà inscrite : la suite se passe dans la boîte mail.
+          setInfo(`Dernière étape : ouvrez l’e-mail envoyé à ${f.email} et cliquez sur le lien pour activer votre espace. Pensez à regarder dans les courriers indésirables.${r.verification === 'terminal' ? ' (Développement : le lien est affiché dans le terminal.)' : ''}`);
+          return;
+        }
         onDone(r.user);
         notify(r.verificationSent ? 'Compte créé. Confirmez votre adresse avec le lien reçu par e-mail.' : r.verification === 'terminal' ? 'Compte créé. (Développement : le lien de confirmation est affiché dans le terminal.)' : 'Compte créé.');
       } else {

@@ -1,6 +1,6 @@
 // Centre de formation professionnelle : les 3 pôles, puis une fiche par formation.
 import React from 'react';
-import { ArrowRight, CalendarDays, Clock3, GraduationCap, ChartColumn, ListChecks, Wallet, Users, MapPin, MessageCircle } from 'lucide-react';
+import { ArrowRight, CalendarDays, Clock3, GraduationCap, ChartColumn, ListChecks, Wallet, Users, MapPin, MessageCircle, Receipt } from 'lucide-react';
 import { PLACEHOLDERS, whatsappLink } from '../config.js';
 import { useCatalog } from '../lib/catalog.jsx';
 import { useSeo } from '../lib/seo.js';
@@ -14,6 +14,11 @@ import { TrainingForm } from '../components/forms.jsx';
 export const courseImage = (c) => ({ slot: `course-${c.slug}`, fallback: PLACEHOLDERS[c.placeholder] });
 
 const nextSession = (c) => c.sessions.find((s) => s.status === 'ouverte');
+const has = (v) => v !== null && v !== undefined && v !== '';
+const fcfa = (n) => `${Number(n).toLocaleString('fr-FR')} FCFA`;
+/** Durées saisies par l'administration (ancien champ texte en secours). */
+export const durationsOf = (c) => (c.duration_options?.length ? c.duration_options : c.duration ? [{ label: c.duration }] : []);
+export const requirementsOf = (c) => (c.admission_requirements?.length ? c.admission_requirements : c.prerequisites ? [c.prerequisites] : []);
 
 function CourseCard({ c }) {
   const next = nextSession(c);
@@ -24,6 +29,12 @@ function CourseCard({ c }) {
         <span className="cCardDomain">{c.domain}</span>
         <h3>{c.title}</h3>
         <p>{c.summary}</p>
+        {(durationsOf(c).length > 0 || has(c.registration_fee_fcfa)) && (
+          <p className="cCardMeta">
+            <Clock3 size={16} aria-hidden="true" />
+            {[durationsOf(c).map((d) => d.label).join(' · '), has(c.registration_fee_fcfa) ? `Inscription : ${fcfa(c.registration_fee_fcfa)}` : ''].filter(Boolean).join(' — ')}
+          </p>
+        )}
         <p className="cCardMeta">
           <CalendarDays size={16} aria-hidden="true" />
           {next ? `Prochaine session : ${formatDay(next.starts_on)}` : 'Prochaines dates bientôt annoncées'}
@@ -100,6 +111,27 @@ function Fact({ icon: Icon, label, value, empty }) {
   );
 }
 
+/** Durées (avec leur prix éventuel), prix, frais : uniquement ce que l'administration a renseigné. */
+function PriceFacts({ c }) {
+  const durations = durationsOf(c);
+  const perDuration = durations.some((d) => has(d.price_fcfa));
+  return (
+    <>
+      <Fact icon={Clock3} label={durations.length > 1 ? 'Durées au choix' : 'Durée'} empty="À préciser" value={durations.length ? (
+        <ul className="factList">
+          {durations.map((d) => <li key={d.label}><strong>{d.label}</strong>{has(d.price_fcfa) ? <> : {fcfa(d.price_fcfa)}</> : perDuration && !has(c.price_fcfa) ? <span className="muted"> : prix sur demande</span> : null}{d.note && <span className="muted"> ({d.note})</span>}</li>)}
+        </ul>
+      ) : null} />
+      {has(c.registration_fee_fcfa) && <Fact icon={Receipt} label="Frais d’inscription" value={fcfa(c.registration_fee_fcfa)} />}
+      {(!perDuration || has(c.price_fcfa)) && <Fact icon={Wallet} label="Prix de la formation" value={has(c.price_fcfa) ? formatPrice(c.price_fcfa, c.price_note) : null} empty="Nous consulter" />}
+      {c.extra_fees?.length > 0 && <Fact icon={Receipt} label="Frais supplémentaires" value={
+        <ul className="factList">{c.extra_fees.map((x) => <li key={x.label}>{x.label} : {fcfa(x.amount_fcfa)}</li>)}</ul>
+      } />}
+      {c.payment_terms && <Fact icon={Wallet} label="Modalités de paiement" value={c.payment_terms} />}
+    </>
+  );
+}
+
 export function CoursePage({ slug }) {
   const cat = useCatalog();
   const c = cat.course(slug);
@@ -147,6 +179,16 @@ export function CoursePage({ slug }) {
             </ol>
           </Reveal>
 
+          <Reveal as="section" aria-labelledby="admission">
+            <h2 id="admission" className="subTitle">Conditions d’admission</h2>
+            {c.level || requirementsOf(c).length ? (
+              <ul className="checkList">
+                {c.level && <li><GraduationCap size={18} aria-hidden="true" />Niveau requis : {c.level}</li>}
+                {requirementsOf(c).map((r) => <li key={r}><ListChecks size={18} aria-hidden="true" />{r}</li>)}
+              </ul>
+            ) : <p className="muted">Renseignez-vous auprès de nous : nous vous indiquons les conditions d’admission.</p>}
+          </Reveal>
+
           <Reveal as="section" aria-labelledby="sessions">
             <h2 id="sessions" className="subTitle">Dates de formation</h2>
             {c.sessions.length === 0 ? (
@@ -176,10 +218,8 @@ export function CoursePage({ slug }) {
         <aside className="detailAside">
           <dl className="facts">
             <Fact icon={GraduationCap} label="Domaine" value={c.domain} />
-            <Fact icon={Clock3} label="Durée" value={c.duration} empty="À préciser" />
-            <Fact icon={ChartColumn} label="Niveau" value={c.level} empty="À préciser" />
-            <Fact icon={ListChecks} label="Prérequis" value={c.prerequisites} empty="À préciser" />
-            <Fact icon={Wallet} label="Tarif" value={c.price_fcfa !== null && c.price_fcfa !== undefined ? formatPrice(c.price_fcfa, c.price_note) : null} empty="Nous consulter" />
+            <PriceFacts c={c} />
+            <Fact icon={ChartColumn} label="Niveau requis" value={c.level} empty="À préciser" />
             {c.certificate && <Fact icon={GraduationCap} label="À l’issue" value={c.certificate} />}
             <Fact icon={Users} label="Places" value={c.sessions.some((s) => s.seats_left) ? 'Selon la session choisie' : null} empty="Selon la session" />
             <Fact icon={MapPin} label="Lieu" value={[...new Set(c.sessions.map((s) => s.site).filter(Boolean))].join(', ') || null} empty="Baguida ou Agbavi, selon la session" />

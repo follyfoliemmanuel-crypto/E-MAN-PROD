@@ -6,12 +6,14 @@
 //   POST {support: true, body}           client : écrire à l'assistance ; {support_user_id, body} : l'équipe répond
 //   GET ?notifications=1 [&unread=1] [&limit=n]  mes notifications
 //   POST {action: 'read', ids?}          marquer comme lues (toutes si ids absent) ; {action: 'unread', ids}
+//   GET ?stream=1 [&since=]               flux temps réel (Server-Sent Events) de MES notifications
 //   GET ?announcements=1                 annonces publiées ; POST {action: 'announce', …} : admin
 import { z } from 'zod';
 import { handler, send, readJson } from './_lib/http.js';
 import { requireUser, requirePermission, requireAdmin, rateLimit } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
+import { streamNotifications } from './_lib/services/live.js';
 import * as inbox from './_lib/services/inbox.js';
 
 const messageSchema = z.object({
@@ -24,8 +26,14 @@ const messageSchema = z.object({
 
 export default handler({
   async GET(req, res) {
-    const actor = actorOf(await requireUser(req));
+    const user = await requireUser(req);
+    const actor = actorOf(user);
     const q = req.query || {};
+    if (q.stream === '1') {
+      // Flux temps réel (SSE) : notifications de la personne connectée uniquement.
+      await rateLimit(`live:${user.id}`, 120, 60, 'Trop de connexions en temps réel. Rechargez la page dans un moment.');
+      return streamNotifications(req, res, user, { cursor: typeof q.since === 'string' ? q.since : null });
+    }
     if (q.notifications === '1') {
       const f = s.parse(z.object({
         category: s.oneOf(inbox.NOTIFICATION_CATEGORIES, 'Rubrique').optional(),

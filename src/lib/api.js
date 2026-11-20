@@ -3,7 +3,7 @@
 // utile pour présenter le site avant le branchement de la base.
 import { prepareImage, shrinksImages } from './images.js';
 import { compressForUpload } from './compress.js';
-import { PRESTATIONS as SEED_PRESTATIONS, POLES as SEED_POLES, COURSES as SEED_COURSES, CONTENT as SEED_CONTENT } from '../content/seed.js';
+import { PRESTATIONS as SEED_PRESTATIONS, POLES as SEED_POLES, ALL_COURSES as SEED_COURSES, CONTENT as SEED_CONTENT } from '../content/seed.js';
 
 export const DEMO = import.meta.env.VITE_DEMO === '1';
 

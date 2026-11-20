@@ -71,10 +71,14 @@ export const slug = (label = 'Identifiant') =>
 
 export const optionalSlug = (label) => optional(slug(label));
 
+/** Jour réel (pas de 31 février) entre 1900 et 2200. */
+export const validDay = (v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && +v.slice(0, 4) >= 1900 && +v.slice(0, 4) <= 2200
+  && !Number.isNaN(Date.parse(v + 'T00:00:00Z')) && new Date(v + 'T00:00:00Z').toISOString().startsWith(v);
+
 export function date(label, { req = false } = {}) {
   const s = z
     .string({ required_error: `${label} : champ obligatoire.`, invalid_type_error: `${label} invalide.` })
-    .refine((v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v + 'T00:00:00Z')) && new Date(v + 'T00:00:00Z').toISOString().startsWith(v), `${label} invalide (format AAAA-MM-JJ).`);
+    .refine((v) => validDay(v), `${label} invalide (format AAAA-MM-JJ, entre 1900 et 2200).`);
   return req ? required(s) : optional(s);
 }
 
@@ -86,7 +90,8 @@ export function fcfa(label, { req = false } = {}) {
     .number({ required_error: `${label} : champ obligatoire.`, invalid_type_error: `${label} : nombre attendu.` })
     .int(`${label} : nombre entier attendu (FCFA).`)
     .min(0, `${label} : le montant ne peut pas être négatif.`)
-    .max(1e11, `${label} : montant trop élevé.`);
+    // Limite des colonnes « integer » de Postgres (2,1 milliards) : au-delà, refus clair plutôt qu'une panne.
+    .max(2e9, `${label} : montant trop élevé.`);
   return z.preprocess((v) => (blank(v) ? undefined : toNumber(v)), req ? s : s.optional()).transform((v) => v ?? null);
 }
 

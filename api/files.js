@@ -8,9 +8,11 @@
 //   DELETE {id}                  supprimer (auteur ou admin)
 //   POST {action: 'cleanup'}     admin : effacer les envois abandonnés
 //   GET ?limits=1                tailles et formats acceptés par usage (public)
+//   GET ?cron=cleanup            Vercel Cron (en-tête Authorization: Bearer CRON_SECRET) : nettoyage quotidien
 // Le navigateur envoie les fichiers directement à Cloudinary : ils ne transitent jamais par
 // cette fonction. En développement sans Cloudinary : PUT/GET ?local=… (dossier .uploads/).
 import { z } from 'zod';
+import { timingSafeEqual } from 'node:crypto';
 import { handler, send, readJson, HttpError } from './_lib/http.js';
 import { currentUser, requireUser, requireAdmin, rateLimit } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
@@ -47,13 +49,25 @@ export default handler({
     if (q.limits === '1') {
       return send(res, 200, { limits: files.uploadLimits() });
     }
+    if (q.cron === 'cleanup') {
+      // Nettoyage quotidien lancé par Vercel Cron (vercel.json), authentifié par CRON_SECRET.
+      const secret = process.env.CRON_SECRET;
+      const given = String(req.headers.authorization || '');
+      if (!secret || given.length !== secret.length + 7 || !timingSafeEqual(Buffer.from(given), Buffer.from(`Bearer ${secret}`))) throw new HttpError(404, 'Adresse inconnue.');
+      return send(res, 200, await files.cleanupPending({ id: null, role: 'system', permissions: [] }));
+    }
     if (q.local === 'get') {
+      // Lecture directe : seulement pour le stockage local de développement (jamais sur Vercel).
+      if (process.env.VERCEL) throw new HttpError(404, 'Adresse inconnue.');
       verifyLocalSignature(process.env, q);
       const data = await provider('local').readKey(q.key).catch(() => null);
       if (!data) throw new HttpError(404, 'Fichier introuvable.');
+      const type = Object.values(files.FORMATS).some((f) => f.mime === q.type) ? q.type : 'application/octet-stream';
+      const inline = q.inline === '1' && type.startsWith('image/');
       res.statusCode = 200;
-      res.setHeader('Content-Type', q.type);
-      res.setHeader('Content-Disposition', `${q.inline === '1' ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(q.name || 'fichier')}`);
+      res.setHeader('Content-Type', type);
+      res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(String(q.name || 'fichier').slice(0, 200))}`);
+      res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Cache-Control', 'private, max-age=300');
       return res.end(data);
@@ -71,7 +85,7 @@ export default handler({
   async PUT(req, res) {
     // Réception directe : seulement pour le stockage local de développement.
     const q = req.query || {};
-    if (q.local !== 'put') throw new HttpError(404, 'Adresse inconnue.');
+    if (q.local !== 'put' || process.env.VERCEL) throw new HttpError(404, 'Adresse inconnue.');
     verifyLocalSignature(process.env, q);
     if (storageStatus().active !== 'local') throw new HttpError(404, 'Adresse inconnue.');
     const store = provider('local');

@@ -9,6 +9,7 @@
 // - Le texte affiché sur l'écran verrouillé est générique : jamais de nom, de montant ni de numéro.
 import crypto from 'node:crypto';
 import { query, one } from './db.js';
+import { logError } from './http.js';
 
 const b64u = (buf) => Buffer.from(buf).toString('base64url');
 const fromB64u = (s) => Buffer.from(String(s || ''), 'base64url');
@@ -266,7 +267,7 @@ export async function pushToUsers(userIds, { kind, link, team = false, ttl = 864
       }
     }));
   } catch (err) {
-    console.error(JSON.stringify({ level: 'error', event: 'push.failed', message: err.message }));
+    logError('push.failed', err);
   }
   return out;
 }

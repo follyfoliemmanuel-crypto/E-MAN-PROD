@@ -60,7 +60,7 @@ export async function listPayments(actor, orderId) {
 /** Données d'un reçu, après contrôle d'accès (équipe « commandes » ou client de la commande). */
 export async function receiptData(actor, paymentId) {
   const p = await one(
-    `select p.*, p.amount_fcfa::float8 as amount_fcfa, to_char(p.received_on, 'YYYY-MM-DD') as received_on,
+    `select p.id, p.order_id, p.method, p.reference, p.note, p.receipt_number, p.created_at, p.amount_fcfa::float8 as amount_fcfa, to_char(p.received_on, 'YYYY-MM-DD') as received_on,
             o.number as order_number, o.user_id, o.customer_name, o.customer_phone, o.customer_email, o.total_fcfa::float8 as order_total_fcfa,
             (select coalesce(sum(x.amount_fcfa), 0)::float8 from payments x where x.order_id = p.order_id
                and (x.received_on, x.created_at) <= (p.received_on, p.created_at)) as paid_to_date_fcfa,

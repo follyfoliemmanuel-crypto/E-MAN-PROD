@@ -9,7 +9,7 @@
 //   GET ?stream=1 [&since=]               flux temps réel (Server-Sent Events) de MES notifications
 //   GET ?announcements=1                 annonces publiées ; POST {action: 'announce', …} : admin
 import { z } from 'zod';
-import { handler, send, readJson } from './_lib/http.js';
+import { handler, send, readJson, readQuery, Q } from './_lib/http.js';
 import { requireUser, requirePermission, requireAdmin, rateLimit } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
@@ -28,11 +28,14 @@ export default handler({
   async GET(req, res) {
     const user = await requireUser(req);
     const actor = actorOf(user);
-    const q = req.query || {};
+    const q = readQuery(req, {
+      stream: Q.flag, since: Q.text(80), notifications: Q.flag, unread: Q.flag, category: Q.text(30), before: Q.text(40), limit: Q.text(4),
+      announcements: Q.flag, support: Q.text(40), quote: Q.id('Devis'), order: Q.id('Commande'),
+    });
     if (q.stream === '1') {
       // Flux temps réel (SSE) : notifications de la personne connectée uniquement.
       await rateLimit(`live:${user.id}`, 120, 60, 'Trop de connexions en temps réel. Rechargez la page dans un moment.');
-      return streamNotifications(req, res, user, { cursor: typeof q.since === 'string' ? q.since : null });
+      return streamNotifications(req, res, user, { cursor: q.since || null });
     }
     if (q.notifications === '1') {
       const f = s.parse(z.object({

@@ -12,8 +12,11 @@ const HIDDEN_GRACE_MS = 30000;
 export function startLive({ onUnread, onNotification, onFallbackPoll }) {
   if (DEMO || typeof window === 'undefined') return () => {};
   let es = null; let stopped = false; let lastId = ''; let retryTimer = null; let hideTimer = null; let pollTimer = null;
-  let failures = 0;
+  let failures = 0; let connectedOnce = false;
   const seen = new Set();
+  // Après une coupure ou un retour sur l'onglet : tout ce qui est affiché se relit une fois
+  // (un rechargement a pu échouer pendant la coupure, et ce qui est déjà vu n'est pas renvoyé).
+  const resync = () => window.dispatchEvent(new CustomEvent(LIVE_EVENT, { detail: { kind: 'resync' } }));
 
   const startPolling = () => { if (!pollTimer) pollTimer = setInterval(() => { if (document.visibilityState === 'visible') onFallbackPoll?.(); }, 20000); };
   const stopPolling = () => { clearInterval(pollTimer); pollTimer = null; };
@@ -28,6 +31,8 @@ export function startLive({ onUnread, onNotification, onFallbackPoll }) {
       try { onUnread?.(JSON.parse(e.data).unread); } catch { /* message illisible : ignoré */ }
       // Rattrapage de ce qui a pu arriver pendant la coupure.
       onFallbackPoll?.();
+      if (connectedOnce) resync();
+      connectedOnce = true;
     });
     es.addEventListener('notification', (e) => {
       if (e.lastEventId) lastId = e.lastEventId;
@@ -56,7 +61,7 @@ export function startLive({ onUnread, onNotification, onFallbackPoll }) {
     if (document.visibilityState === 'visible') { clearTimeout(hideTimer); open(); onFallbackPoll?.(); }
     else { clearTimeout(hideTimer); hideTimer = setTimeout(close, HIDDEN_GRACE_MS); }
   };
-  const onOnline = () => { close(); open(); };
+  const onOnline = () => { close(); open(); resync(); };
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('online', onOnline);
   open();
@@ -68,14 +73,14 @@ export function startLive({ onUnread, onNotification, onFallbackPoll }) {
 }
 
 /** Recharge une donnée dès qu'une notification qui la concerne arrive (ex. nouveau message). */
-export function onLive(test, fn) {
-  const h = (e) => { if (test(e.detail)) fn(e.detail); };
+export function onLive(test, fn, { resync = true } = {}) {
+  const h = (e) => { if (e.detail?.kind === 'resync' ? resync : test(e.detail)) fn(e.detail); };
   window.addEventListener(LIVE_EVENT, h);
   return () => window.removeEventListener(LIVE_EVENT, h);
 }
 
 /** Hook React : relance `fn` quand une notification correspondante arrive. */
-export function useLive(test, fn, deps = []) {
+export function useLive(test, fn, deps = [], options = {}) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => onLive(test, fn), deps);
+  useEffect(() => onLive(test, fn, options), deps);
 }

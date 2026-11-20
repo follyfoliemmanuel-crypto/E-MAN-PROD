@@ -13,20 +13,39 @@
 // cette fonction. En développement sans Cloudinary : PUT/GET ?local=… (dossier .uploads/).
 import { z } from 'zod';
 import { timingSafeEqual } from 'node:crypto';
-import { handler, send, readJson, HttpError } from './_lib/http.js';
+import { handler, send, readJson, HttpError, readQuery, Q } from './_lib/http.js';
 import { currentUser, requireUser, requireAdmin, rateLimit } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
 import { provider, storageStatus, verifyLocalSignature } from './_lib/storage.js';
 import * as s from './_lib/schemas.js';
 import * as files from './_lib/services/files.js';
 
+// Liste blanche à la frontière de l'API : extensions et types acceptés par AU MOINS un usage.
+// Chaque usage applique ensuite sa propre liste (plus courte), puis le fichier réellement reçu
+// est contrôlé (taille, format décodé, premiers octets) avant d'être marqué « prêt ».
+const EXTENSIONS = Object.values(files.FORMATS).flatMap((f) => f.ext);
+const MIME_TYPES = new Set(['', 'application/octet-stream', ...Object.values(files.FORMATS).flatMap((f) => [f.mime, ...f.aliases])]);
+const ABSOLUTE_MAX = 200 * 1024 * 1024; // aucun usage n'accepte plus (les limites réelles sont bien plus basses)
 const uploadSchema = z.object({
   purpose: s.oneOf(Object.keys(files.PURPOSES), 'Usage du fichier'),
   target_id: s.optionalUuid('Ressource'),
-  filename: s.text('Nom du fichier', { min: 1, max: 255, req: true }),
-  mime_type: s.text('Type du fichier', { max: 120 }),
-  size: s.int('Taille du fichier', { min: 1, max: 1e10, req: true }),
+  filename: z.string({ required_error: 'Nom du fichier obligatoire.' }).trim().min(1).max(255)
+    // Pas d'extension exécutable ni de double extension trompeuse : seule la DERNIÈRE compte, et elle doit être connue.
+    .refine((n) => EXTENSIONS.includes(n.split('.').pop().toLowerCase()) && n.includes('.'), { message: 'Format de fichier non accepté.', params: { status: 415 } })
+    .refine((n) => !/\.(php\d?|phtml|html?|xhtml|svg|js|mjs|cjs|exe|bat|cmd|sh|ps1|jar|py|pl|cgi|asp|aspx|jsp|htaccess)(\.|$)/i.test(n), { message: 'Format de fichier non accepté.', params: { status: 415 } }),
+  mime_type: z.string().trim().max(120).optional().default('')
+    .refine((m) => MIME_TYPES.has(m.toLowerCase()), { message: 'Type de fichier non accepté.', params: { status: 415 } }),
+  size: z.number({ invalid_type_error: 'Taille du fichier invalide.' }).int().min(1, 'Fichier vide.')
+    .max(ABSOLUTE_MAX, { message: 'Fichier trop volumineux.' }),
 });
+/** Comme s.parse, mais garde le code HTTP adapté (415 format refusé, 413 trop volumineux). */
+function parseUpload(body) {
+  const r = uploadSchema.safeParse(body);
+  if (r.success) return r.data;
+  const issue = r.error.issues[0];
+  const status = issue?.params?.status || (issue?.code === 'too_big' && issue.path[0] === 'size' ? 413 : 400);
+  throw new HttpError(status, issue?.message || 'Requête invalide.');
+}
 
 export default handler({
   async POST(req, res) {
@@ -41,11 +60,15 @@ export default handler({
     }
     const user = await requireUser(req);
     await rateLimit(`upload:${user.id}`, 40, 60, 'Trop de fichiers envoyés. Réessayez dans une heure.');
-    send(res, 201, await files.createUpload(actorOf(user), s.parse(uploadSchema, body)));
+    send(res, 201, await files.createUpload(actorOf(user), parseUpload(body)));
   },
 
   async GET(req, res) {
-    const q = req.query || {};
+    const q = readQuery(req, {
+      limits: Q.flag, cron: Q.oneOf(['cleanup']), id: Q.id('Fichier'), inline: Q.flag, direct: Q.flag, info: Q.flag,
+      // Lien du stockage local de développement (signé par le serveur).
+      local: Q.oneOf(['get', 'put']), key: Q.text(200), type: Q.text(120), size: Q.text(15), name: Q.text(255), exp: Q.text(15), sig: Q.text(64),
+    });
     if (q.limits === '1') {
       return send(res, 200, { limits: files.uploadLimits() });
     }
@@ -72,7 +95,8 @@ export default handler({
       res.setHeader('Cache-Control', 'private, max-age=300');
       return res.end(data);
     }
-    const id = s.parse(s.uuid('Fichier'), q.id);
+    if (!q.id) throw new HttpError(400, 'Fichier manquant.');
+    const id = q.id;
     const actor = actorOf(await currentUser(req));
     const url = await files.downloadUrl(actor, id, { inline: q.inline === '1', direct: q.direct === '1' });
     if (q.info === '1') return send(res, 200, { url });
@@ -84,12 +108,13 @@ export default handler({
 
   async PUT(req, res) {
     // Réception directe : seulement pour le stockage local de développement.
-    const q = req.query || {};
+    const q = readQuery(req, { local: Q.oneOf(['put']), key: Q.text(200), type: Q.text(120), size: Q.text(15), name: Q.text(255), inline: Q.flag, exp: Q.text(15), sig: Q.text(64) });
     if (q.local !== 'put' || process.env.VERCEL) throw new HttpError(404, 'Adresse inconnue.');
     verifyLocalSignature(process.env, q);
     if (storageStatus().active !== 'local') throw new HttpError(404, 'Adresse inconnue.');
     const store = provider('local');
-    if (String(req.headers['content-type'] || '') !== q.type) throw new HttpError(400, 'Type de fichier différent de celui annoncé.');
+    const contentType = s.parse(z.string().max(120), String(req.headers['content-type'] || ''));
+    if (contentType !== q.type) throw new HttpError(400, 'Type de fichier différent de celui annoncé.');
     await store.receive(q.key, req, { size: Number(q.size), contentType: q.type });
     res.statusCode = 200;
     res.end();

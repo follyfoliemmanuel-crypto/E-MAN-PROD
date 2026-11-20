@@ -1,7 +1,7 @@
 // Abonnements push d'un compte : chaque appareil est rattaché au compte connecté (jamais à un
 // identifiant envoyé par le navigateur). Un compte peut avoir plusieurs appareils.
 import { query, one } from '../db.js';
-import { HttpError } from '../http.js';
+import { HttpError, logError } from '../http.js';
 import { vapidKeys, allowedEndpoint, deviceLabel, pushToUsers } from '../push.js';
 import { logActivity } from '../activity.js';
 
@@ -11,7 +11,7 @@ export async function pushStatus(userId) {
   let publicKey = null; let error = null;
   try { publicKey = (await vapidKeys()).publicKey; } catch (err) {
     // Le détail (noms de variables) reste dans le journal du serveur, jamais dans la réponse.
-    console.error(JSON.stringify({ level: 'error', event: 'push.keys', message: err.message }));
+    logError('push.keys', err);
     error = 'Notifications push indisponibles pour le moment : l’administrateur doit vérifier la configuration.';
   }
   const devices = await query(

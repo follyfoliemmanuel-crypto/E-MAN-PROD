@@ -5,7 +5,7 @@
 //   PATCH {id, …}  admin : statut (« Inscrit » seulement s'il reste une place), note
 //                  client : annuler sa propre inscription
 import { z } from 'zod';
-import { handler, send, readJson, clientIp } from './_lib/http.js';
+import { handler, send, readJson, clientIp, readQuery, Q } from './_lib/http.js';
 import { currentUser, requireUser, rateLimit } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
@@ -41,8 +41,9 @@ export default handler({
 
   async GET(req, res) {
     const actor = actorOf(await requireUser(req));
-    if (req.query?.id) return send(res, 200, { registration: await enrollments.getEnrollment(actor, s.parse(s.uuid('Inscription'), req.query.id)) });
-    const f = s.parse(z.object({ user: s.optionalUuid('Client'), session: s.optionalUuid('Session') }), req.query || {});
+    const f = readQuery(req, { id: Q.id('Inscription'), user: Q.id('Client'), session: Q.id('Session') });
+    if (f.id) return send(res, 200, { registration: await enrollments.getEnrollment(actor, f.id) });
+    f.user ??= null; f.session ??= null;
     const rows = await enrollments.listEnrollments(actor, { userId: f.user, sessionId: f.session });
     // « course » : nom de champ attendu par le site depuis la v1.
     send(res, 200, { registrations: rows.map((r) => ({ ...r, course: r.training_title, course_slug: r.training_slug })) });

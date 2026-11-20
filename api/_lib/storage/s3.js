@@ -81,11 +81,11 @@ export function s3Provider(name, cfg) {
     },
     /** Ce que le stockage a réellement reçu : taille et premiers octets. null s'il n'y a rien. */
     async inspect(row, n = 64) {
-      const h = await fetch(sign('HEAD', row.storage_key, { expires: 60 }), { method: 'HEAD' });
+      const h = await fetch(sign('HEAD', row.storage_key, { expires: 60 }), { method: 'HEAD', signal: AbortSignal.timeout(15000) });
       if (h.status === 404) return null;
       check(h, 'vérification');
       if (n <= 0) return { size: Number(h.headers.get('content-length')), contentType: h.headers.get('content-type'), head: Buffer.alloc(0) };
-      const r = check(await fetch(sign('GET', row.storage_key, { expires: 60 }), { headers: { Range: `bytes=0-${n - 1}` } }), 'lecture');
+      const r = check(await fetch(sign('GET', row.storage_key, { expires: 60 }), { headers: { Range: `bytes=0-${n - 1}` }, signal: AbortSignal.timeout(15000) }), 'lecture');
       return { size: Number(h.headers.get('content-length')), contentType: h.headers.get('content-type'), head: Buffer.from(await r.arrayBuffer()).subarray(0, n) };
     },
     downloadUrl(row, { filename, inline = false }) {
@@ -96,12 +96,12 @@ export function s3Provider(name, cfg) {
       });
     },
     async remove(row) {
-      const r = await fetch(sign('DELETE', row.storage_key, { expires: 60 }), { method: 'DELETE' });
+      const r = await fetch(sign('DELETE', row.storage_key, { expires: 60 }), { method: 'DELETE', signal: AbortSignal.timeout(15000) });
       if (!r.ok && r.status !== 404) throw new Error(`${name} : réponse ${r.status} (suppression).`);
     },
     /** Contenu complet (sauvegarde, contrôle d'intégrité). Utilisé hors de Vercel. */
     async read(row) {
-      const r = await fetch(sign('GET', row.storage_key, { expires: 300 }));
+      const r = await fetch(sign('GET', row.storage_key, { expires: 300 }), { signal: AbortSignal.timeout(120000) });
       if (r.status === 404) return null;
       check(r, 'lecture');
       return Buffer.from(await r.arrayBuffer());
@@ -110,7 +110,7 @@ export function s3Provider(name, cfg) {
     async write(key, buffer, { contentType = 'application/octet-stream', metadata = {} } = {}) {
       const headers = { 'content-type': contentType, 'content-length': buffer.length };
       for (const [k, v] of Object.entries(metadata)) headers[`x-amz-meta-${k}`] = v;
-      check(await fetch(sign('PUT', key, { expires: 300, headers }), { method: 'PUT', headers: { 'Content-Type': contentType, ...Object.fromEntries(Object.entries(metadata).map(([k, v]) => [`x-amz-meta-${k}`, v])) }, body: buffer }), 'écriture');
+      check(await fetch(sign('PUT', key, { expires: 300, headers }), { method: 'PUT', headers: { 'Content-Type': contentType, ...Object.fromEntries(Object.entries(metadata).map(([k, v]) => [`x-amz-meta-${k}`, v])) }, body: buffer, signal: AbortSignal.timeout(120000) }), 'écriture');
       return { storage_key: key };
     },
     /** Liste des objets (ListObjectsV2), pour repérer les fichiers orphelins. */
@@ -120,7 +120,7 @@ export function s3Provider(name, cfg) {
       do {
         const query = { 'list-type': '2', prefix, ...(token ? { 'continuation-token': token } : {}) };
         const url = presignUrl({ ...base, method: 'GET', url: `${endpoint}/${enc(cfg.bucket)}`, query, expires: 60 });
-        const xml = await check(await fetch(url), 'liste').text();
+        const xml = await check(await fetch(url, { signal: AbortSignal.timeout(30000) }), 'liste').text();
         const keys = xmlValues(xml, 'Key');
         const sizes = xmlValues(xml, 'Size').map(Number);
         const dates = xmlValues(xml, 'LastModified');

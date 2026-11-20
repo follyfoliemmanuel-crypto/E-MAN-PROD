@@ -10,8 +10,9 @@
 //   POST password                    changer mon mot de passe (ou en créer un après Google)
 //   POST revoke {id} | {others:true} fermer une session / toutes mes autres sessions
 //   POST google-unlink               retirer la connexion Google (si un mot de passe existe)
+import { z } from 'zod';
 import { query, one } from '../_lib/db.js';
-import { handler, send, readJson, clientIp, siteUrl, HttpError } from '../_lib/http.js';
+import { handler, send, readJson, clientIp, siteUrl, HttpError, readQuery, logError } from '../_lib/http.js';
 import {
   hashPassword, verifyPassword, needsRehash, dummyVerify, checkPassword, createSession, destroySession, currentUser,
   requireUser, publicUser, rateLimit, sha256, logSecurity, maskEmail, issueToken,
@@ -25,10 +26,15 @@ import * as v from '../_lib/validate.js';
 import { claimGuestRequests, announceClient } from '../_lib/services/clients.js';
 
 // « /api/auth/google/callback » (adresse souvent saisie dans Google Cloud) = « google-callback ».
+// Colonnes lues pour répondre à l'interface : jamais le hachage du mot de passe (seul un booléen
+// « has_password » en est tiré), jamais les préférences ni les dates internes.
+const ME_COLS = `id, email, full_name, first_name, last_name, phone, role, permissions, email_verified_at, avatar_file_id,
+  disabled_at, (password_hash is not null) as has_password`;
+
 const actionOf = (req) => {
   const path = new URL(req.url, 'http://x').pathname.replace(/\/$/, '');
   if (path.endsWith('/google/callback')) return 'google-callback';
-  return req.query?.action || path.split('/').pop();
+  return readQuery(req, { action: z.string().regex(/^[a-z-]{2,40}$/, 'Action inconnue.').optional() }).action || path.split('/').pop();
 };
 // Sans service d'e-mails, en développement local, les liens s'affichent dans le terminal.
 const devMail = () => !mailConfigured() && !process.env.VERCEL;
@@ -48,7 +54,9 @@ async function consumeToken(token, kind) {
 /** Envoie un modèle d'e-mail de compte. En local sans fournisseur, le lien s'affiche dans le terminal. */
 async function deliver(req, { to, template, vars, link, userId }) {
   if (devMail()) {
-    console.log(`\n[e-mail de développement : ${template}] À : ${to}\n${link}\n`);
+    // Développement local uniquement (devMail() est toujours faux sur Vercel) : le lien s'affiche
+    // dans le terminal de la personne qui développe, avec l'adresse masquée.
+    if (!process.env.VERCEL) console.log(`\n[e-mail de développement : ${template}] À : ${maskEmail(to)}\n${link}\n`);
     return 'terminal';
   }
   const { sendTemplate } = await import('../_lib/emails.js');
@@ -74,7 +82,7 @@ const actions = {
     } catch (err) {
       if (err instanceof HttpError) throw err;
       // Base injoignable : on le dit clairement au lieu de faire comme si rien n'était configuré.
-      console.error(JSON.stringify({ level: 'error', scope: 'database', message: String(err.message).replace(/postgres(ql)?:\/\/\S+/g, '[adresse]') }));
+      logError('database.unavailable', err);
       return send(res, 503, { error: 'Le serveur ne joint pas la base de données : vérifiez DATABASE_URL (voir /api/auth/status).', database: false, ...methods });
     }
     send(res, 200, { user: publicUser(user), ...methods });
@@ -209,7 +217,7 @@ const actions = {
       await logSecurity(req, 'security.rate_limited', { data: { what: 'login', email: maskEmail(email) } });
       throw err;
     }
-    const user = await one('select * from users where lower(email) = $1', [email]);
+    const user = await one('select id, password_hash, disabled_at from users where lower(email) = $1', [email]);
     const ok = user?.password_hash ? await verifyPassword(pw, user.password_hash) : await dummyVerify(pw);
     if (!ok || user.disabled_at) {
       await logSecurity(req, 'auth.login_failed', { userId: user?.id ?? null, data: { email: maskEmail(email), reason: !user ? 'compte inconnu' : user.disabled_at && ok ? 'compte désactivé' : 'mot de passe' } });
@@ -219,9 +227,10 @@ const actions = {
     // Ancien hachage (scrypt) : remplacé par Argon2id maintenant que le mot de passe est connu.
     if (needsRehash(user.password_hash)) await query('update users set password_hash = $2 where id = $1 returning id', [user.id, await hashPassword(pw)]);
     await createSession(req, res, user.id);
-    await query('update users set last_login_at = now() where id = $1 returning id', [user.id]);
-    await logSecurity(req, 'auth.login', { userId: user.id, role: user.role, data: { method: 'password' } });
-    send(res, 200, { user: publicUser(user) });
+    // Réponse construite à partir d'une liste fermée de colonnes (jamais le hachage du mot de passe).
+    const me = await one(`update users set last_login_at = now() where id = $1 returning ${ME_COLS}`, [user.id]);
+    await logSecurity(req, 'auth.login', { userId: me.id, role: me.role, data: { method: 'password' } });
+    send(res, 200, { user: publicUser(me) });
   },
 
   async logout(req, res) {
@@ -263,7 +272,7 @@ const actions = {
     await query('delete from sessions where user_id = $1 returning user_id', [userId]);
     await createSession(req, res, userId, { method: 'reset' });
     await logSecurity(req, 'auth.password_reset', { userId });
-    const user = await one('select * from users where id = $1', [userId]);
+    const user = await one(`select ${ME_COLS} from users where id = $1`, [userId]);
     await claimGuestRequests(user);
     send(res, 200, { user: publicUser(user) });
   },
@@ -279,7 +288,7 @@ const actions = {
     await createSession(req, res, userId, { method: 'verify' });
     // Adresse désormais prouvée : le compte d'E-MAN PROD devient administrateur.
     await promoteOwner(req, userId);
-    const user = await one('select * from users where id = $1', [userId]);
+    const user = await one(`select ${ME_COLS} from users where id = $1`, [userId]);
     const claimed = await claimGuestRequests(user);
     send(res, 200, { user: publicUser(user), claimed });
   },
@@ -338,7 +347,7 @@ const GET_ACTIONS = {
   status: actions.status,
   sessions: actions.sessions,
   google: startGoogle,
-  'google-callback': (req, res) => googleCallback(req, res, { onLogin: async (id) => claimGuestRequests(await one('select * from users where id = $1', [id])) }),
+  'google-callback': (req, res) => googleCallback(req, res, { onLogin: async (id) => claimGuestRequests(await one(`select ${ME_COLS} from users where id = $1`, [id])) }),
 };
 
 export default handler({

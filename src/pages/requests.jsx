@@ -1,7 +1,7 @@
 // Espace client et administration : devis, commandes, messages, fichiers, profil.
 // Les règles (qui peut faire quoi, quand) sont appliquées par le serveur ; l'écran
 // n'affiche que les actions que le serveur autorise (champ « allowed »).
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { useLive } from '../lib/live.js';
 import { MessageCircle, Paperclip, Plus, Trash2, X, Download } from 'lucide-react';
 import { LimitHint } from '../lib/limits.jsx';
@@ -25,14 +25,20 @@ const HISTORY_LABELS = {
 
 function useLoader(fn, deps) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
+  // Une relecture en arrière-plan qui échoue (réseau coupé, temps réel) garde l'affichage en place
+  // au lieu de le remplacer par une erreur : seule la PREMIÈRE lecture d'un élément affiche l'erreur.
+  const shownFor = useRef(null);
+  const key = useMemo(() => ({}), deps); // eslint-disable-line react-hooks/exhaustive-deps
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: '' }));
     try {
-      setState({ loading: false, data: await fn(), error: '' });
+      const data = await fn();
+      shownFor.current = key;
+      setState({ loading: false, data, error: '' });
     } catch (e) {
-      setState({ loading: false, data: null, error: e.message });
+      setState((s) => (shownFor.current === key && s.data ? { ...s, loading: false } : { loading: false, data: null, error: e.message }));
     }
-  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
   return [state, load];
 }
@@ -94,7 +100,7 @@ function QuoteDetail({ id, isAdmin, notify, onClose, onChanged }) {
   const confirm = useConfirm();
   const [{ loading, data: q, error }, reload] = useLoader(() => getQuote(id), [id]);
   // Côté client : le devis envoyé ou mis à jour par l'atelier s'affiche aussitôt (l'équipe garde sa saisie en cours).
-  useLive((n) => !isAdmin && n.kind.startsWith('quote.') && String(n.link || '').includes(id), () => reload(), [id, isAdmin]);
+  useLive((n) => !isAdmin && n.kind.startsWith('quote.') && String(n.link || '').includes(id), () => reload(), [id, isAdmin], { resync: !isAdmin });
   const [busy, setBusy] = useState(false);
   const run = async (fn, done) => {
     setBusy(true);
@@ -300,7 +306,7 @@ export function OrdersPanel({ isAdmin, notify, search, onChanged, initialId = nu
 function OrderDetail({ id, isAdmin, notify, onClose, onChanged }) {
   const confirm = useConfirm();
   const [{ loading, data: o, error }, reload] = useLoader(() => getOrder(id), [id]);
-  useLive((n) => !isAdmin && (n.kind.startsWith('order.') || n.kind.startsWith('invoice.') || n.kind.startsWith('payment.')) && String(n.link || '').includes(id), () => reload(), [id, isAdmin]);
+  useLive((n) => !isAdmin && (n.kind.startsWith('order.') || n.kind.startsWith('invoice.') || n.kind.startsWith('payment.')) && String(n.link || '').includes(id), () => reload(), [id, isAdmin], { resync: !isAdmin });
   const [{ data: members }] = useLoader(() => (isAdmin ? space.members().then((r) => r.members) : Promise.resolve([])), [isAdmin]);
   const [v, setV] = useState(null);
   const [busy, setBusy] = useState(false);

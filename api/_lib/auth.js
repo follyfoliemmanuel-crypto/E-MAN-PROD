@@ -6,7 +6,7 @@
 import crypto, { scrypt, randomBytes, randomInt, timingSafeEqual, createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { query, one } from './db.js';
-import { HttpError, isHttps, clientIp } from './http.js';
+import { HttpError, isHttps, clientIp, logError } from './http.js';
 
 const scryptAsync = promisify(scrypt);
 const argon2Async = crypto.argon2 ? promisify(crypto.argon2) : null;
@@ -276,7 +276,7 @@ export async function logSecurity(req, action, { userId = null, role = null, dat
      values ($1, $2, $3, 'user', $4, $5::jsonb) returning id`,
     [userId, role || (userId ? 'client' : 'guest'), action, userId || 'anonyme',
       JSON.stringify({ ...data, ip: ipHash(req), ua: String(req.headers['user-agent'] || '').slice(0, 120) })],
-  ).catch((err) => console.error('journal', err));
+  ).catch((err) => logError('security.log', err));
 }
 
 /** a***@domaine.tg : assez pour enquêter, sans copier l'adresse complète dans le journal. */

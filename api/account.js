@@ -18,7 +18,7 @@
 //   GET ?push=1                          mes appareils abonnés aux notifications push + clé publique VAPID
 //   POST {action: 'push_subscribe', subscription} · {action: 'push_unsubscribe', id | endpoint} · {action: 'push_test'}
 import { z } from 'zod';
-import { handler, send, readJson } from './_lib/http.js';
+import { handler, send, readJson, readQuery, Q } from './_lib/http.js';
 import { requireUser, requireAdmin, requirePermission, PERMISSIONS } from './_lib/auth.js';
 import * as security from './_lib/services/security.js';
 import * as dashboard from './_lib/services/dashboard.js';
@@ -56,7 +56,10 @@ export default handler({
   async GET(req, res) {
     const user = await requireUser(req);
     const actor = actorOf(user);
-    const q = req.query || {};
+    const q = readQuery(req, {
+      team: Q.flag, security: Q.flag, stats: Q.flag, documents: Q.flag, activity: Q.text(20), actor: Q.id('Collaborateur'), clients: Q.flag,
+      q: Q.text(100), type: Q.text(40), verified: Q.text(5), status: Q.text(20), role: Q.text(10), user: Q.id('Client'), history: Q.flag, prefs: Q.flag, push: Q.flag,
+    });
     if (q.team === '1') {
       await requireAdmin(req);
       return send(res, 200, { team: await security.listTeam(), permissions: PERMISSIONS });
@@ -116,7 +119,7 @@ export default handler({
       await rateLimit(`push:${me.id}`, 30, 60, 'Trop de changements de notifications. Réessayez dans un moment.');
       if (body.action === 'push_subscribe') {
         const sub = s.parse(pushSchema, body.subscription);
-        return send(res, 201, await pushSubs.subscribe(me, sub, req.headers['user-agent']));
+        return send(res, 201, await pushSubs.subscribe(me, sub, s.parse(z.string().max(400).catch(''), req.headers['user-agent'] || '')));
       }
       if (body.action === 'push_unsubscribe') {
         const t = s.parse(z.object({ id: s.optionalUuid('Appareil'), endpoint: z.string().url().max(1000).optional().nullable() }), body);

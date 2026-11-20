@@ -1,5 +1,18 @@
 # Historique des versions et des vérifications
 
+## v3.9.2 — Suite du scan Herozion (38 → 26 constats, 17 → 5 élevés)
+
+- Réponses de l'API : plus aucun `select *`, colonnes explicites partout (connexion, sessions, reçus, attestations). La réponse de connexion donne le profil public complet, sans hachage.
+- Journaux serveur masqués (e-mails, liens, jetons, chaînes de connexion) via `redact`/`logError`.
+- Téléversements : liste blanche d'extensions et de types MIME dès la frontière de l'API (Zod) ; extension exécutable cachée dans le nom refusée ; 415 et 413 conservés.
+- Temps réel : après une coupure, les vues ouvertes se relisent une fois (sans toucher aux formulaires en cours de l'équipe). Une relecture en arrière-plan qui échoue garde l'affichage au lieu d'afficher une erreur.
+
+## v3.9.1 — Validation par schéma de toutes les entrées (scan Herozion)
+
+- Chaque route déclare ses paramètres d'adresse dans un schéma Zod (`readQuery`). Corps, en-têtes Content-Length, IP, user-agent et Last-Event-ID passent aussi par Zod. Plus aucun `req.query` lu directement.
+- Délai maximal sur tous les appels sortants (Google, Cloudinary, S3), anti-rafales en mémoire (300 requêtes/min/IP en ligne), chemin du stockage local confiné à son dossier.
+- Détails : docs/AUDIT-SECURITE.md, section v3.9.1.
+
 ## v3.9.0 — Messagerie en temps réel et derniers points de sécurité
 
 - Temps réel (Server-Sent Events) : messages, pastille de non lues, notifications, nouvelles commandes et changements de statut s'affichent en environ 1 s, sans recharger la page. Reconnexion automatique, aucun doublon, droits inchangés. Détails et limites de Vercel : docs/MESSAGERIE-TEMPS-REEL.md.

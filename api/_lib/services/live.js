@@ -11,7 +11,11 @@
 //
 // Neon (pilote HTTP) ne permet pas LISTEN/NOTIFY : la fonction interroge la base toutes les
 // ~1,2 s, avec une requête indexée très légère (notifications_user_created_idx).
+import { z } from 'zod';
 import { query, one } from '../db.js';
+
+/** Dernier identifiant reçu par le navigateur (en-tête Last-Event-ID) : « date|uuid », 120 caractères au plus. */
+const LastEventId = z.string().max(120).regex(/^[0-9T:.Z+-]*(\|[0-9a-f-]{36})?$/i).catch('');
 
 export const LIVE = {
   tickMs: Number(process.env.LIVE_TICK_MS) || 1200,
@@ -36,12 +40,13 @@ const parseCursor = (raw) => {
  * @param {{id: string, session_id: string}} user  personne connectée (vérifiée par l'appelant)
  */
 export async function streamNotifications(req, res, user, { cursor: rawCursor } = {}) {
-  let cursor = parseCursor(req.headers['last-event-id']) || parseCursor(rawCursor)
+  const lastEvent = LastEventId.parse(req.headers['last-event-id'] ?? '');
+  let cursor = parseCursor(lastEvent) || parseCursor(rawCursor)
     || (await one(`select to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`)).t;
   const sent = new Set();
   // Reprise : la dernière notification déjà reçue n'est pas renvoyée. Celles d'avant, dans la fenêtre
   // de relecture, peuvent l'être : le navigateur les écarte par identifiant (aucun doublon affiché).
-  const lastId = String(req.headers['last-event-id'] || rawCursor || '').split('|')[1];
+  const lastId = String(lastEvent || rawCursor || '').split('|')[1];
   if (/^[0-9a-f-]{36}$/i.test(lastId || '')) sent.add(lastId);
   let closed = false;
   req.on('close', () => { closed = true; });

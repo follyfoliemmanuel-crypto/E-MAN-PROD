@@ -172,7 +172,8 @@ export async function revokeCertificate(actor, id, reason) {
 
 export async function getCertificate(actor, id) {
   const c = await one(
-    `select c.*, e.user_id, u.full_name as issued_by_name from certificates c join enrollments e on e.id = c.enrollment_id
+    `select c.id, c.number, c.verify_code, c.enrollment_id, c.kind, c.holder_name, c.training_title, c.session_label, c.conditions,
+            c.issued_at, c.revoked_at, c.revoked_reason, e.user_id, u.full_name as issued_by_name from certificates c join enrollments e on e.id = c.enrollment_id
        left join users u on u.id = c.issued_by where c.id = $1`, [id]);
   if (!c || (!isTeam(actor, 'trainings') && (!actor.id || c.user_id !== actor.id))) throw new HttpError(404, 'Document introuvable.');
   return c;

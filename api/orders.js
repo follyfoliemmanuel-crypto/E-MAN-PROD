@@ -9,7 +9,7 @@
 //   PATCH {id, …}  statut, paiement, lignes, remise, date promise, collaborateur, note (équipe)
 // Une commande issue d'un devis se crée par POST /api/quotes {action: 'convert'}.
 import { z } from 'zod';
-import { handler, send, readJson } from './_lib/http.js';
+import { handler, send, readJson, readQuery, Q } from './_lib/http.js';
 import { requireUser, requirePermission, rateLimit, can } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
@@ -38,19 +38,17 @@ const patchSchema = z.object({
 export default handler({
   async GET(req, res) {
     const actor = actorOf(await requireUser(req));
-    if (req.query?.id && req.query?.pdf === '1') return sendPdf(res, await orderPdf(actor, s.parse(s.uuid('Commande'), req.query.id)));
-    if (req.query?.id) return send(res, 200, { order: await orders.getOrder(actor, s.parse(s.uuid('Commande'), req.query.id)) });
-    if (req.query?.members === '1') {
+    const f = readQuery(req, {
+      id: Q.id('Commande'), pdf: Q.flag, members: Q.flag, status: Q.oneOf(s.ORDER_STATUSES), q: Q.text(100), user: Q.id('Client'),
+      assigned: z.string().regex(/^(me|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i, 'Filtre invalide.').optional(),
+    });
+    if (f.id && f.pdf) return sendPdf(res, await orderPdf(actor, f.id));
+    if (f.id) return send(res, 200, { order: await orders.getOrder(actor, f.id) });
+    if (f.members) {
       await requirePermission(req, 'orders');
       return send(res, 200, { members: await orders.assignableMembers() });
     }
-    const f = s.parse(z.object({
-      status: s.oneOf(s.ORDER_STATUSES, 'Statut').optional(),
-      q: s.text('Recherche', { max: 100 }),
-      user: s.optionalUuid('Client'),
-      assigned: z.string().regex(/^(me|[0-9a-f-]{36})$/).optional(),
-    }), req.query || {});
-    send(res, 200, { orders: await orders.listOrders(actor, { status: f.status, search: f.q, userId: f.user, assigned: f.assigned }) });
+    send(res, 200, { orders: await orders.listOrders(actor, { status: f.status, search: f.q || null, userId: f.user || null, assigned: f.assigned }) });
   },
 
   async POST(req, res) {

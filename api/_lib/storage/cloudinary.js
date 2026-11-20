@@ -140,7 +140,7 @@ export function cloudinaryProvider(cfg) {
     },
     /** Ce que Cloudinary a réellement enregistré (+ 64 premiers octets des fichiers bruts). */
     async inspect(row, n = 64) {
-      const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/resources/${rt(row)}/${dt(row)}/${row.storage_key}`, { headers: { Authorization: auth } });
+      const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/resources/${rt(row)}/${dt(row)}/${row.storage_key}`, { headers: { Authorization: auth }, signal: AbortSignal.timeout(15000) });
       if (r.status === 404) return null;
       if (!r.ok) throw fail(r, 'vérification');
       const j = await r.json();
@@ -168,14 +168,14 @@ export function cloudinaryProvider(cfg) {
     async remove(row) {
       const params = { invalidate: 'true', public_id: row.storage_key, timestamp: String(now()), type: dt(row) };
       const body = new URLSearchParams({ ...params, api_key: cfg.apiKey, signature: apiSignature(params, cfg.secret, cfg.algo) });
-      const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/${rt(row)}/destroy`, { method: 'POST', body });
+      const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/${rt(row)}/destroy`, { method: 'POST', body, signal: AbortSignal.timeout(15000) });
       if (!r.ok) throw fail(r, 'suppression');
       const j = await r.json().catch(() => ({}));
       if (j.result !== 'ok' && j.result !== 'not found') throw new Error(`cloudinary : suppression refusée (${j.result || 'réponse inconnue'}).`);
     },
     /** Original complet (sauvegarde, contrôle d'intégrité) — utilisé hors de Vercel. */
     async read(row) {
-      const r = await fetch(privateDownloadUrl(row, { attachment: true, expires: 600 }));
+      const r = await fetch(privateDownloadUrl(row, { attachment: true, expires: 600 }), { signal: AbortSignal.timeout(120000) });
       if (r.status === 404) return null;
       if (!r.ok) throw fail(r, 'lecture');
       return Buffer.from(await r.arrayBuffer());
@@ -186,7 +186,7 @@ export function cloudinaryProvider(cfg) {
       const form = new FormData();
       for (const [k, v] of Object.entries({ ...params, api_key: cfg.apiKey, signature: apiSignature(params, cfg.secret, cfg.algo) })) form.append(k, v);
       form.append('file', new Blob([buffer], { type: row.mime_type || 'application/octet-stream' }), 'restauration');
-      const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/${rt(row)}/upload`, { method: 'POST', body: form });
+      const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/${rt(row)}/upload`, { method: 'POST', body: form, signal: AbortSignal.timeout(120000) });
       if (!r.ok) throw fail(r, 'restauration');
       const j = await r.json();
       return { remote_version: j.version, remote_format: rt(row) === 'raw' ? null : j.format, size: j.bytes };
@@ -199,7 +199,7 @@ export function cloudinaryProvider(cfg) {
           let cursor = null;
           do {
             const q = new URLSearchParams({ prefix: `${cfg.folder}/`, max_results: '500', ...(cursor ? { next_cursor: cursor } : {}) });
-            const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/resources/${resource}/${type}?${q}`, { headers: { Authorization: auth } });
+            const r = await fetch(`${cfg.api}/v1_1/${cfg.cloud}/resources/${resource}/${type}?${q}`, { headers: { Authorization: auth }, signal: AbortSignal.timeout(15000) });
             if (!r.ok) throw fail(r, 'liste');
             const j = await r.json();
             for (const x of j.resources || []) out.push({ key: x.public_id, size: x.bytes, modified: x.created_at, type, resource_type: resource });
@@ -213,7 +213,7 @@ export function cloudinaryProvider(cfg) {
 
   /** Premiers octets d'un fichier, sans télécharger le reste (lecture interrompue). */
   async function readStart(row, n) {
-    const r = await fetch(privateDownloadUrl(row, { attachment: true, expires: 60 }), { headers: { Range: `bytes=0-${n - 1}` } });
+    const r = await fetch(privateDownloadUrl(row, { attachment: true, expires: 60 }), { headers: { Range: `bytes=0-${n - 1}` }, signal: AbortSignal.timeout(15000) });
     if (!r.ok) throw fail(r, 'lecture du début du fichier');
     const reader = r.body.getReader();
     const chunks = [];

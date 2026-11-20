@@ -10,7 +10,7 @@
 //   GET ?verify=<code>                    vérification publique d'une attestation (sans connexion)
 //   POST {action: 'payment' | 'invoice' | 'invoice_cancel' | 'attendance' | 'result' | 'certificate' | 'certificate_revoke', …}
 import { z } from 'zod';
-import { handler, send, readJson, HttpError, siteUrl, clientIp } from './_lib/http.js';
+import { handler, send, readJson, HttpError, siteUrl, clientIp, readQuery, Q } from './_lib/http.js';
 import { requireUser, rateLimit } from './_lib/auth.js';
 import { actorOf, isTeam } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
@@ -24,7 +24,10 @@ const origin = (req) => siteUrl(req);
 
 export default handler({
   async GET(req, res) {
-    const q = req.query || {};
+    const q = readQuery(req, {
+      verify: Q.text(32), invoices: Q.flag, order: Q.id('Commande'), invoice: Q.id('Facture'), pdf: Q.flag, payments: Q.id('Commande'),
+      receipt: Q.id('Paiement'), roster: Q.id('Session'), learner: Q.id('Inscription'), eligibility: Q.id('Inscription'), certificate: Q.id('Attestation'),
+    });
     if (q.verify !== undefined) {
       // Public : vérifier qu'une attestation présentée est authentique.
       await rateLimit(`verify:${clientIp(req)}`, 30, 10, 'Trop de vérifications. Réessayez dans quelques minutes.');

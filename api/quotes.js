@@ -7,7 +7,7 @@
 //   GET ?id=&pdf=1            devis en PDF (client : une fois envoyé ; équipe : toujours, « brouillon » avant l'envoi)
 //   PATCH {id, …}             lignes, prix, remise, validité, client associé, note (admin)
 import { z } from 'zod';
-import { handler, send, readJson, clientIp } from './_lib/http.js';
+import { handler, send, readJson, clientIp, readQuery, Q } from './_lib/http.js';
 import { currentUser, requireUser, requirePermission, rateLimit, can } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
@@ -86,14 +86,10 @@ export default handler({
   async GET(req, res) {
     const user = await requireUser(req);
     const actor = actorOf(user);
-    if (req.query?.id && req.query?.pdf === '1') return sendPdf(res, await quotePdf(actor, s.parse(s.uuid('Devis'), req.query.id)));
-    if (req.query?.id) return send(res, 200, { quote: await quotes.getQuote(actor, s.parse(s.uuid('Devis'), req.query.id)) });
-    const f = s.parse(z.object({
-      status: s.oneOf(s.QUOTE_STATUSES, 'Statut').optional(),
-      q: s.text('Recherche', { max: 100 }),
-      user: s.optionalUuid('Client'),
-    }), req.query || {});
-    send(res, 200, { quotes: await quotes.listQuotes(actor, { status: f.status, search: f.q, userId: f.user }) });
+    const f = readQuery(req, { id: Q.id('Devis'), pdf: Q.flag, status: Q.oneOf(s.QUOTE_STATUSES), q: Q.text(100), user: Q.id('Client') });
+    if (f.id && f.pdf) return sendPdf(res, await quotePdf(actor, f.id));
+    if (f.id) return send(res, 200, { quote: await quotes.getQuote(actor, f.id) });
+    send(res, 200, { quotes: await quotes.listQuotes(actor, { status: f.status, search: f.q || null, userId: f.user || null }) });
   },
 
   async PATCH(req, res) {

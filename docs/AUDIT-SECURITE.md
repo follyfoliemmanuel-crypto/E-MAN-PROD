@@ -98,3 +98,36 @@ Déjà en place et vérifié :
 - Sans fournisseur d'e-mails configuré, l'inscription peut toujours révéler qu'une adresse existe : il n'y a alors aucun autre moyen de confirmer une adresse.
 - Il faut lancer `npm audit` et activer Dependabot sur votre dépôt GitHub.
 - Les adresses de livraison signées de Cloudinary restent en SHA-1 court, sauf si le format long est activé dans le compte Cloudinary.
+
+## v3.9.1 — Points signalés par Herozion (scan c7ecdedfcaeb)
+
+| Herozion | Ligne visée | Ce qui a été fait |
+|---|---|---|
+| [01] Schéma de validation absent | `google.js:67` (paramètre `return`) | Lu avec `readQuery` et un schéma Zod (texte de 200 caractères au plus), puis filtré par `safeReturn`, qui n'accepte que des chemins internes. |
+| [02] | `google.js:164` (retour de Google) | Schéma Zod des seuls paramètres attendus (`state`, `code`, `error`, `scope`…) avec leur longueur maximale. |
+| [03]–[08] | `http.js:32–38` (`readJson`) | En-tête Content-Length et corps validés par Zod (`ContentLength`, `RawBody`, enveloppe objet), avant le contrôle des caractères et de la profondeur. |
+| [09] | `http.js:148` (paramètres d'adresse) | Enveloppe Zod commune à toutes les routes. **Chaque route** déclare maintenant ses paramètres dans un schéma : fichiers, devis, commandes, inscriptions, catalogue, documents, messagerie, compte, Google, auth. Il ne reste plus aucun `req.query` lu directement. |
+
+Autres durcissements (catégories verrouillées « disponibilité » et « téléversements ») :
+- **Délai maximal sur chaque appel sortant** : Google (8–10 s), Cloudinary (15 s, 120 s pour les transferts), S3 historique (15–120 s). Le push et les e-mails en avaient déjà un. Un service lent ne peut plus bloquer une fonction.
+- **Anti-rafales en mémoire** : en ligne, plus de 300 requêtes par minute depuis une même IP donnent un 429, avant tout accès à la base.
+- **Stockage local** : le chemin final reste obligatoirement dans le dossier des envois (aucune remontée `../` possible). La taille reçue est plafonnée et le type est lu par Zod.
+- **Adresses IP** (`x-real-ip`, `x-forwarded-for`) et **user-agent** validés par Zod. Un `Last-Event-ID` mal formé est ignoré.
+
+Tests : `p16/query.mjs` (18), plus 2 tests de rafale dans `p16/vercel_mode.mjs` ; toute la régression repasse.
+
+## v3.9.2 — Suite du scan Herozion (scan 44745e3ff29c : 38 → 26 constats, 17 → 5 « élevés »)
+
+La catégorie « validation des entrées » a disparu du rapport. Il reste trois catégories, dont le détail est verrouillé :
+
+| Catégorie | Ce qui a été fait |
+|---|---|
+| Filtrer les champs des réponses API (4) | Plus aucun `select *` ni `alias.*` dans l'API. Connexion : seuls l'identifiant, le hachage et l'état du compte sont lus. Session, réinitialisation, confirmation et Google : une liste fermée de colonnes, sans hachage (un simple booléen `has_password`). Reçus de paiement et attestations : colonnes explicites, sans l'auteur interne. |
+| Exposition de données sensibles (6) | Journal serveur structuré et **masqué** (`redact` / `logError`) : adresses e-mail, liens (qui peuvent porter un jeton), chaînes de connexion et jetons longs remplacés avant écriture. Concerne les e-mails, la sécurité, le push, le stockage, la base et les erreurs d'API. En développement, l'adresse affichée avec le lien de test est masquée. |
+| Téléversements (13) | Liste blanche **à la frontière de l'API** (schéma Zod de `POST /api/files`) : seule la dernière extension compte et elle doit être connue ; les extensions exécutables ou HTML sont refusées même au milieu d'un nom (`photo.php.png`) ; types MIME limités à ceux des formats acceptés ; taille plafonnée. Les codes 415 et 413 sont gardés. Ces contrôles s'ajoutent à ceux de chaque usage et à la vérification du fichier réellement reçu. |
+
+Correctifs trouvés pendant les tests de la v3.9.2 :
+- La réponse de connexion n'avait plus le nom de la personne (liste de colonnes trop courte), ce qui faisait planter le tableau de bord de l'équipe. Elle est maintenant construite avec la liste fermée `ME_COLS`, et un test le vérifie.
+- Après une coupure réseau, une conversation ouverte pouvait rester sans le message arrivé pendant la coupure. Une relecture unique est désormais faite à la reconnexion.
+
+Dépendance « 1 high » signalée par `npm install` : je n'ai pas pu lancer `npm audit` ici, faute d'accès réseau. Comme `npm audit fix --force` propose une mise à jour majeure, il s'agit très probablement de Vite, l'outil de construction, utilisé seulement sur l'ordinateur de développement et pendant la construction sur Vercel, jamais par le site en ligne. Passer à Vite 7 ou 8 change de version majeure : à faire de votre côté avec `npm i -D vite@latest @vitejs/plugin-react@latest`, puis `npm run build` pour vérifier.

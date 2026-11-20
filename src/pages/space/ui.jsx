@@ -1,18 +1,24 @@
 // Éléments communs des espaces client et administrateur :
 // chargement, pages vides, cartes statistiques, fenêtre de confirmation, graphiques.
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState, useMemo } from 'react';
 
 /** Charge des données ; `reload` relance. Les erreurs du serveur sont affichées telles quelles. */
 export function useLoad(fn, deps = []) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
+  // Une relecture en arrière-plan qui échoue (réseau coupé, temps réel) garde l'affichage en place
+  // au lieu de le remplacer par une erreur : seule la PREMIÈRE lecture d'un élément affiche l'erreur.
+  const shownFor = useRef(null);
+  const key = useMemo(() => ({}), deps); // eslint-disable-line react-hooks/exhaustive-deps
   const load = useCallback(async () => {
     setState((s) => ({ ...s, loading: true, error: '' }));
     try {
-      setState({ loading: false, data: await fn(), error: '' });
+      const data = await fn();
+      shownFor.current = key;
+      setState({ loading: false, data, error: '' });
     } catch (e) {
-      setState({ loading: false, data: null, error: e.message });
+      setState((s) => (shownFor.current === key && s.data ? { ...s, loading: false } : { loading: false, data: null, error: e.message }));
     }
-  }, deps); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
   return [state, load];
 }

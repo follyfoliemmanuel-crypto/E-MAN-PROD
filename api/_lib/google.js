@@ -16,7 +16,7 @@
 //  - aucun compte → création automatique, adresse marquée comme confirmée.
 import { createHash, createPublicKey, verify as verifySig, randomBytes, timingSafeEqual } from 'node:crypto';
 import { query, one } from './db.js';
-import { HttpError, siteUrl, clientIp } from './http.js';
+import { HttpError, siteUrl, clientIp, readQuery, Q } from './http.js';
 import { createSession, cookie, readCookie, appendCookie, logSecurity, maskEmail, rateLimit, sha256 } from './auth.js';
 
 let ENDPOINTS = {
@@ -64,7 +64,7 @@ export async function startGoogle(req, res) {
   const challenge = b64url(createHash('sha256').update(verifier).digest());
   await query(
     'insert into oauth_states (state_hash, nonce, code_verifier, return_to) values ($1, $2, $3, $4) returning state_hash',
-    [sha256(state), nonce, verifier, safeReturn(req.query?.return)],
+    [sha256(state), nonce, verifier, safeReturn(readQuery(req, { return: Q.text(200) }).return)],
   );
   appendCookie(res, cookie(req, STATE_COOKIE, state, 600, { path: '/api/auth' }));
   const params = new URLSearchParams({
@@ -84,7 +84,7 @@ export async function startGoogle(req, res) {
 let jwksCache = null;
 async function googleKey(kid) {
   if (!jwksCache || jwksCache.expires < Date.now() || !jwksCache.keys[kid]) {
-    const r = await fetch(ENDPOINTS.jwks);
+    const r = await fetch(ENDPOINTS.jwks, { signal: AbortSignal.timeout(8000) });
     if (!r.ok) throw new Error(`clés Google indisponibles (${r.status})`);
     const { keys } = await r.json();
     jwksCache = { expires: Date.now() + 3600e3, keys: Object.fromEntries(keys.map((k) => [k.kid, k])) };
@@ -161,7 +161,8 @@ export async function accountForGoogle(req, profile) {
 }
 
 export async function googleCallback(req, res, { onLogin } = {}) {
-  const q = req.query || {};
+  // Paramètres renvoyés par Google : seuls ceux attendus sont lus, avec leur longueur maximale.
+  const q = readQuery(req, { state: Q.text(200), code: Q.text(2000), error: Q.text(200), scope: Q.text(1000), authuser: Q.text(10), prompt: Q.text(40), hd: Q.text(200) });
   const fail = async (reason, data = {}, code = 'google-echec') => {
     await logSecurity(req, 'auth.google_failed', { data: { reason, ...data } });
     appendCookie(res, cookie(req, STATE_COOKIE, '', 0, { path: '/api/auth' }));
@@ -185,6 +186,7 @@ export async function googleCallback(req, res, { onLogin } = {}) {
   try {
     const r = await fetch(ENDPOINTS.token, {
       method: 'POST',
+      signal: AbortSignal.timeout(10000),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         code: String(q.code),

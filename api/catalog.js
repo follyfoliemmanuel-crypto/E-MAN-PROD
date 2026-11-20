@@ -4,7 +4,7 @@
 //   GET ?all=1     : idem avec les éléments masqués et les sessions passées (admin)
 //   GET ?sitemap=1 : plan du site XML (servi à /sitemap.xml par vercel.json)
 import { query } from './_lib/db.js';
-import { handler, send, siteUrl } from './_lib/http.js';
+import { handler, send, siteUrl, readQuery, Q } from './_lib/http.js';
 import { requirePermission, requireUser, can } from './_lib/auth.js';
 import { loadCatalog } from './_lib/services/content.js';
 
@@ -14,14 +14,15 @@ const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 export default handler({
   async GET(req, res) {
-    const all = req.query?.all === '1';
+    const q = readQuery(req, { all: Q.flag, sitemap: Q.flag });
+    const all = q.all === '1';
     if (all) {
       // Vue complète (éléments masqués) : équipe chargée du contenu ou des formations.
       const user = await requireUser(req);
       if (!can(user, 'content') && !can(user, 'trainings')) await requirePermission(req, 'content');
     }
 
-    if (req.query?.sitemap === '1') {
+    if (q.sitemap === '1') {
       const base = siteUrl(req);
       const [services, trainings] = await Promise.all([
         query('select slug from services where published order by sort'),

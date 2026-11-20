@@ -14,7 +14,7 @@
 //                                              migration vérifiée des anciens fichiers
 //   local       dossier .uploads/, développement uniquement (refusé sur Vercel)
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { HttpError } from './http.js';
+import { HttpError, redact } from './http.js';
 import { s3Provider, s3Config, presignUrl, contentDisposition } from './storage/s3.js';
 import { cloudinaryProvider, cloudinaryConfig } from './storage/cloudinary.js';
 
@@ -46,7 +46,15 @@ function localProvider(env) {
     const fs = await import('node:fs/promises');
     const path = await import('node:path');
     const dir = env.LOCAL_UPLOAD_DIR || path.join(process.cwd(), '.uploads');
-    const file = (key) => path.join(dir, ...key.split('/'));
+    // Chemin d'un fichier : la clé doit avoir le format produit par le serveur, et le chemin final
+    // doit rester DANS le dossier des envois (aucune remontée « ../ » possible).
+    const file = (key) => {
+      const k = String(key || '');
+      if (!LOCAL_KEY.test(k) && !/^backups\/[\w.\/-]{1,200}$/.test(k)) throw new HttpError(400, 'Clé de fichier invalide.');
+      const full = path.resolve(dir, ...k.split('/'));
+      if (!full.startsWith(path.resolve(dir) + path.sep)) throw new HttpError(400, 'Clé de fichier invalide.');
+      return full;
+    };
     return { fs, path, dir, file };
   };
   const self = {
@@ -83,6 +91,7 @@ function localProvider(env) {
     /** Réception du fichier (PUT /api/files?local=put…), taille contrôlée pendant la lecture. */
     async receive(key, req, { size, contentType }) {
       const { fs, path, file } = await fsOps();
+      if (!Number.isInteger(size) || size <= 0 || size > 50 * 1024 * 1024) throw new HttpError(413, 'Taille du fichier invalide.');
       await fs.mkdir(path.dirname(file(key)), { recursive: true });
       const chunks = [];
       let total = 0;
@@ -186,7 +195,7 @@ export function storage(env = process.env) {
 
 /** Journal d'erreur utile, sans adresse signée ni secret. */
 export function logStorageError(op, row, err) {
-  console.error(JSON.stringify({ level: 'error', scope: 'storage', op, driver: row?.driver, file_id: row?.id, message: String(err?.message || err).replace(/https?:\/\/\S+/g, '[adresse]') }));
+  console.error(JSON.stringify({ level: 'error', scope: 'storage', op, driver: row?.driver, file_id: row?.id, message: redact(err?.message || err) }));
 }
 
 export { contentDisposition };

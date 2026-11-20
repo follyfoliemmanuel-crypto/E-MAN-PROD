@@ -5,6 +5,7 @@
 //   MAIL_REPLY_TO = adresse de réponse    (par défaut emanprod3@gmail.com)
 // Sans fournisseur, le site fonctionne : les e-mails ne partent pas et le journal l'indique.
 // Un e-mail n'est noté « envoyé » que si le fournisseur l'a accepté et a renvoyé un identifiant.
+import { logError } from './http.js';
 import { query } from './db.js';
 
 export const DEFAULT_REPLY_TO = 'emanprod3@gmail.com';
@@ -70,7 +71,7 @@ async function log(entry) {
       [entry.userId || null, entry.to, entry.template, entry.subject.slice(0, 300), entry.status, entry.provider || null, entry.providerId || null, entry.error ? String(entry.error).slice(0, 500) : null],
     );
   } catch (err) {
-    console.error('email_log', err.message);
+    logError('mail.log', err);
   }
 }
 
@@ -103,7 +104,7 @@ export async function deliverEmail({ to, subject, html, text, template = 'libre'
     const id = res.ok ? p.id(data) : null;
     if (!id) {
       const error = res.ok ? 'Le fournisseur n’a pas confirmé l’envoi (aucun identifiant).' : `${p.label} ${res.status} : ${data?.message || data?.error?.message || raw.slice(0, 200)}`;
-      console.error('E-mail non envoyé —', error);
+      logError('mail.failed', error, { template });
       await log({ to, subject, template, userId, status: 'echec', provider: c.provider, error });
       return { status: 'echec', error };
     }

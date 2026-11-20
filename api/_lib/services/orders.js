@@ -9,10 +9,12 @@ const ORDER_COLS = `o.id, o.number, o.quote_id, o.user_id, o.customer_name, o.cu
   o.status, o.payment_status, o.amount_paid_fcfa::float8 as amount_paid_fcfa, o.subtotal_fcfa::float8 as subtotal_fcfa,
   o.discount_fcfa::float8 as discount_fcfa, o.total_fcfa::float8 as total_fcfa, to_char(o.due_on, 'YYYY-MM-DD') as due_on,
   o.delivered_at, o.cancelled_at, o.created_at, o.updated_at,
+  o.client_note, to_char(o.wanted_on, 'YYYY-MM-DD') as wanted_on, o.confirmed_at, o.origin,
   (select number from quotes where id = o.quote_id) as quote_number`;
 const ADMIN_COLS = `${ORDER_COLS}, o.admin_note, o.assigned_to, (select full_name from users where id = o.assigned_to) as assigned_name`;
 
 export const TRANSITIONS = {
+  en_attente: ['confirmee', 'annulee'],
   confirmee: ['en_production', 'annulee'],
   en_production: ['terminee', 'annulee'],
   terminee: ['livree', 'en_production'],
@@ -20,10 +22,10 @@ export const TRANSITIONS = {
   annulee: [],
 };
 export const STATUS_LABELS = {
-  confirmee: 'Confirmée', en_production: 'En production', terminee: 'Terminée (prête)', livree: 'Livrée', annulee: 'Annulée',
+  en_attente: 'En attente de confirmation', confirmee: 'Confirmée', en_production: 'En production', terminee: 'Terminée (prête)', livree: 'Livrée', annulee: 'Annulée',
 };
 /** Lignes et prix modifiables jusqu'à la fin de la production. */
-const EDITABLE = ['confirmee', 'en_production'];
+const EDITABLE = ['en_attente', 'confirmee', 'en_production'];
 
 const ITEMS_RECORDSET = `jsonb_to_recordset($2::jsonb) as x(service_slug text, label text, description text,
   quantity numeric, unit text, unit_price_fcfa bigint, sort int)`;
@@ -47,14 +49,21 @@ function paymentFrom(amountPaid, total) {
   return total > 0 && amountPaid >= total ? 'paye' : 'acompte';
 }
 
-/** Commande directe, sans devis (client venu à l'atelier, commande par téléphone). Admin. */
-export async function createOrder(actor, input) {
-  const items = await prepareItems(input.items);
-  if (input.user_id && !(await one('select id from users where id = $1', [input.user_id]))) throw new HttpError(404, 'Client introuvable.');
+/**
+ * Commande passée par le client depuis son espace. Elle arrive « en attente » :
+ * l'atelier la confirme (en fixant prix et date) ou la refuse. Les prix ne viennent jamais du navigateur.
+ */
+export async function createClientOrder(actor, input) {
+  if (!actor?.id) throw new HttpError(401, 'Connectez-vous pour passer commande.');
+  const items = (await prepareItems(input.items)).map((it) => ({ ...it, unit_price_fcfa: null }));
+  const u = await one('select full_name, email, phone from users where id = $1 and disabled_at is null', [actor.id]);
+  if (!u) throw new HttpError(403, 'Compte indisponible.');
+  const pending = await one(`select count(*)::int as n from orders where user_id = $1 and status = 'en_attente'`, [actor.id]);
+  if (pending.n >= 10) throw new HttpError(429, 'Vous avez déjà 10 commandes en attente de confirmation. Attendez la réponse de l’atelier ou écrivez-nous sur WhatsApp.');
   const row = await one(
     `with o as (
-       insert into orders (user_id, customer_name, customer_phone, customer_email, due_on, admin_note)
-       values ($1, $3, $4, $5, $6, $7) returning id, number
+       insert into orders (user_id, customer_name, customer_phone, customer_email, status, origin, client_note, wanted_on)
+       values ($1, $3, $4, $5, 'en_attente', 'client', $6, $7) returning id, number
      ), i as (
        insert into order_items (order_id, service_slug, label, description, quantity, unit, unit_price_fcfa, sort)
        select o.id, x.service_slug, x.label, x.description, x.quantity, x.unit, x.unit_price_fcfa, x.sort
@@ -62,11 +71,33 @@ export async function createOrder(actor, input) {
        returning id
      )
      select o.id, o.number, (select count(*) from i)::int as items from o`,
-    [input.user_id, JSON.stringify(items), input.name, input.phone, input.email, input.due_on, input.admin_note],
+    [actor.id, JSON.stringify(items), u.full_name, input.phone || u.phone, u.email, input.client_note, input.wanted_on],
   );
-  await logActivity(actor, 'order.created', 'order', row.id, { number: row.number, items: row.items, direct: true });
-  await announceOrder(actor, row.id);
+  if (input.phone && input.phone !== u.phone) await query('update users set phone = $2 where id = $1 and phone is null returning id', [actor.id, input.phone]);
+  await logActivity(actor, 'order.created', 'order', row.id, { number: row.number, items: row.items, by_client: true });
+  const labels = items.map((i) => i.label).join(', ');
+  const link = `/espace?commande=${row.id}`;
+  await notifyUser(actor.id, {
+    kind: 'order.received', title: `Commande ${row.number} envoyée`, body: 'L’atelier la vérifie et vous confirme le prix et la date.', link,
+    email: 'order_received', vars: { numero: row.number },
+    details: [['Commande', row.number], ['Prestations', labels], ['Date souhaitée', longDate(input.wanted_on)]], emailBody: '',
+  });
+  await notifyTeam('orders', {
+    kind: 'order.new', title: `Commande ${row.number} à confirmer`, body: `${u.full_name} — ${labels}`, link, event: 'order_new',
+    details: [['Client', u.full_name], ['Téléphone', input.phone || u.phone], ['Prestations', labels], ['Date souhaitée', longDate(input.wanted_on)]],
+  });
   return row;
+}
+
+/** Le client peut annuler sa commande tant que l'atelier ne l'a pas confirmée. */
+export async function cancelByClient(actor, id) {
+  const o = await loadOrder(actor, id);
+  if (o.user_id !== actor.id) throw new HttpError(404, 'Commande introuvable.');
+  if (o.status !== 'en_attente') throw new HttpError(409, 'Cette commande est déjà confirmée par l’atelier : écrivez-nous pour la modifier ou l’annuler.');
+  await query(`update orders set status = 'annulee', cancelled_at = now() where id = $1 and status = 'en_attente' returning id`, [id]);
+  await logActivity(actor, 'order.status_changed', 'order', id, { from: 'en_attente', to: 'annulee', by_client: true });
+  await notifyTeam('orders', { kind: 'order.cancelled', title: `Commande ${o.number} annulée par le client`, body: o.customer_name, link: `/espace?commande=${id}` });
+  return getOrder(actor, id);
 }
 
 const fcfa = (n) => `${Number(n).toLocaleString('fr-FR')} FCFA`;
@@ -138,7 +169,7 @@ export async function getOrder(actor, id) {
     filesOf('order', id),
     historyOf('order', id, { forClient: !admin }),
   ]);
-  return { ...o, items, files, history, allowed: admin ? TRANSITIONS[o.status] : [] };
+  return { ...o, items, files, history, allowed: admin ? TRANSITIONS[o.status] : [], can_cancel: !admin && o.status === 'en_attente' };
 }
 
 /** Mise à jour par l'administration. Chaque modification est inscrite dans l'historique. */
@@ -195,6 +226,7 @@ export async function updateOrder(actor, id, patch) {
     set('status', patch.status);
     if (patch.status === 'livree') sets.push('delivered_at = now()');
     if (patch.status === 'annulee') sets.push('cancelled_at = now()');
+    if (o.status === 'en_attente' && patch.status === 'confirmee') sets.push('confirmed_at = now()');
     changes.status = { from: o.status, to: patch.status };
   }
   if (sets.length) await query(`update orders set ${sets.join(', ')} where id = $1 returning id`, params);
@@ -229,7 +261,20 @@ export async function updateOrder(actor, id, patch) {
     await logActivity(actor, 'order.status_changed', 'order', id, changes.status);
     if (o.user_id) {
       const ready = patch.status === 'terminee';
-      await notifyUser(o.user_id, {
+      const confirmed = o.status === 'en_attente' && patch.status === 'confirmee';
+      const refused = o.status === 'en_attente' && patch.status === 'annulee';
+      if (confirmed || refused) {
+        const now = await one('select total_fcfa::float8 as total, to_char(due_on, \'YYYY-MM-DD\') as due_on from orders where id = $1', [id]);
+        await notifyUser(o.user_id, confirmed ? {
+          kind: 'order.confirmee', title: `Commande ${o.number} confirmée`, body: 'L’atelier a accepté votre commande. Suivez son avancement ici.', link: `/espace?commande=${id}`,
+          email: 'order_confirmed', vars: { numero: o.number, total: now.total > 0 ? fcfa(now.total) : 'à préciser', date_prevue: longDate(now.due_on) || 'à préciser' },
+          details: [['Commande', o.number], ['Montant', now.total > 0 ? fcfa(now.total) : null], ['Date prévue', longDate(now.due_on)]], emailBody: '',
+        } : {
+          kind: 'order.annulee', title: `Commande ${o.number} non acceptée`, body: patch.admin_note ? null : 'Écrivez-nous pour en savoir plus ou trouver une autre solution.', link: `/espace?commande=${id}`,
+          email: 'order_update', vars: { numero: o.number, statut: 'non acceptée' },
+          details: [['Commande', o.number], ['Statut', 'Non acceptée']], emailBody: '',
+        });
+      } else await notifyUser(o.user_id, {
         kind: `order.${patch.status}`,
         title: ready ? `Commande ${o.number} prête` : `Commande ${o.number} : ${STATUS_LABELS[patch.status].toLowerCase()}`,
         body: ready ? 'Contactez-nous pour convenir du retrait ou de la livraison.' : null,

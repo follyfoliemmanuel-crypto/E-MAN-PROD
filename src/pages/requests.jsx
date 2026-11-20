@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { MessageCircle, Paperclip, Plus, Trash2, X, Download } from 'lucide-react';
 import { LimitHint } from '../lib/limits.jsx';
 import {
-  DEMO, QUOTE_LABELS, ORDER_LABELS, PAYMENT_LABELS,
+  DEMO, QUOTE_LABELS, ORDER_LABELS, CLIENT_ORDER_LABELS, PAYMENT_LABELS,
   fetchQuotes, getQuote, updateQuote, quoteStatus, convertQuote,
   fetchOrders, getOrder, updateOrder, fetchMessages, sendMessage, uploadFile, fileUrl,
   fetchAccount, saveAccount, formatAmount, formatDate, quotePdfUrl, orderPdfUrl, space,
@@ -15,7 +15,7 @@ import { useConfirm } from './space/ui.jsx';
 
 const waLink = (phone, text) => `https://wa.me/${String(phone || '').replace(/\D/g, '')}?text=${encodeURIComponent(text)}`;
 const QUOTE_TONE = { nouveau: 'new', en_etude: 'work', envoye: 'work', accepte: 'done', refuse: 'off', expire: 'off', annule: 'off' };
-const ORDER_TONE = { confirmee: 'new', en_production: 'work', terminee: 'work', livree: 'done', annulee: 'off' };
+const ORDER_TONE = { en_attente: 'new', confirmee: 'work', en_production: 'work', terminee: 'work', livree: 'done', annulee: 'off' };
 const HISTORY_LABELS = {
   'quote.created': 'Demande reçue', 'quote.updated': 'Devis modifié', 'quote.status_changed': 'Statut', 'quote.converted': 'Commande créée',
   'order.created': 'Commande créée', 'order.updated': 'Commande modifiée', 'order.status_changed': 'Statut',
@@ -245,16 +245,24 @@ export function OrdersPanel({ isAdmin, notify, search, onChanged, initialId = nu
   const [mine, setMine] = useState(false);
   const [{ loading, data, error }, reload] = useLoader(() => fetchOrders({ status, ...(mine ? { assigned: 'me' } : {}) }), [status, mine]);
   const rows = (data || []).filter((o) => !search || [o.number, o.customer_name, o.customer_phone, o.summary].join(' ').toLowerCase().includes(search));
+  const LABELS = isAdmin ? ORDER_LABELS : CLIENT_ORDER_LABELS;
+  const pending = isAdmin && !status ? (data || []).filter((o) => o.status === 'en_attente').length : 0;
   if (loading && !data) return <p className="empty">Chargement…</p>;
   if (error) return <p className="formError" role="alert">{error}</p>;
   return (
     <>
       <div className="filterBar slim">
         <select aria-label="Filtrer par statut" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Tous les statuts</option>{Object.entries(ORDER_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          <option value="">Tous les statuts</option>{Object.entries(LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         {isAdmin && <label className="check"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> Seulement celles qui me sont confiées</label>}
       </div>
+      {pending > 0 && (
+        <p className="notice pendingOrders" role="status">
+          <strong>{pending === 1 ? '1 nouvelle commande attend' : `${pending} nouvelles commandes attendent`} votre confirmation.</strong>{' '}
+          <button type="button" className="linkBtn" onClick={() => setStatus('en_attente')}>Les afficher</button>
+        </p>
+      )}
       {open && <OrderDetail id={open} isAdmin={isAdmin} notify={notify} onClose={() => setOpen(null)} onChanged={() => { reload(); onChanged?.(); }} />}
       {!rows.length ? <Empty filtered={Boolean(search || status || mine)} what="commande" /> : (
         <div className="tableScroll">
@@ -269,10 +277,10 @@ export function OrdersPanel({ isAdmin, notify, search, onChanged, initialId = nu
                   <td className="ref">{o.number}<small>{formatDate(o.created_at)}</small></td>
                   {isAdmin && <td>{o.customer_name}<small>{o.customer_phone}</small></td>}
                   <td className="wide">{o.summary}{o.due_on && <small>Prévue le {formatDate(o.due_on)}</small>}{isAdmin && o.assigned_name && <small>Suivie par {o.assigned_name}</small>}</td>
-                  <td><span className={`tag ${ORDER_TONE[o.status]}`}>{ORDER_LABELS[o.status]}</span></td>
-                  <td>{PAYMENT_LABELS[o.payment_status]}</td>
-                  <td className="num">{formatAmount(o.total_fcfa)}</td>
-                  <td><button type="button" className="btn btnGhost btnSmall" onClick={() => setOpen(o.id)} aria-label={`Ouvrir la commande ${o.number}`}>Ouvrir</button></td>
+                  <td><span className={`tag ${ORDER_TONE[o.status]}`}>{LABELS[o.status]}</span></td>
+                  <td>{o.status === 'en_attente' ? '—' : PAYMENT_LABELS[o.payment_status]}</td>
+                  <td className="num">{o.status === 'en_attente' && !o.total_fcfa ? (isAdmin ? 'À chiffrer' : 'À confirmer') : formatAmount(o.total_fcfa)}</td>
+                  <td><button type="button" className={`btn btnSmall ${isAdmin && o.status === 'en_attente' ? 'btnPrimary' : 'btnGhost'}`} onClick={() => setOpen(o.id)} aria-label={`${isAdmin && o.status === 'en_attente' ? 'Traiter' : 'Ouvrir'} la commande ${o.number}`}>{isAdmin && o.status === 'en_attente' ? 'Traiter' : 'Ouvrir'}</button></td>
                 </tr>
               ))}
             </tbody>
@@ -317,35 +325,73 @@ function OrderDetail({ id, isAdmin, notify, onClose, onChanged }) {
     }
   }
   const closed = ['livree', 'annulee'].includes(o.status);
+  const LABELS = isAdmin ? ORDER_LABELS : CLIENT_ORDER_LABELS;
+  const waiting = o.status === 'en_attente';
+  async function decide(to) {
+    if (to === 'annulee' && !(await confirm({ title: `Refuser la commande ${o.number} ?`, text: 'Le client est prévenu dans son espace et par e-mail. Pensez à lui écrire pourquoi (messages ci-dessous ou WhatsApp).', confirm: 'Refuser la commande', danger: true }))) return;
+    if (to === 'confirmee' && !o.total_fcfa && !(await confirm({ title: 'Confirmer sans prix ?', text: 'Aucun prix n’est fixé pour l’instant. Vous pourrez encore modifier les lignes et les prix pendant la production.', confirm: 'Confirmer quand même' }))) return;
+    setBusy(true);
+    try {
+      await updateOrder(o.id, { status: to, ...(v?.due_on && v.due_on !== (o.due_on || '') ? { due_on: v.due_on } : {}) });
+      notify(to === 'confirmee' ? `Commande ${o.number} confirmée. Le client est prévenu.` : `Commande ${o.number} refusée. Le client est prévenu.`);
+      await reload();
+      onChanged();
+    } catch (err) {
+      notify(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function cancelMine() {
+    if (!(await confirm({ title: `Annuler la commande ${o.number} ?`, text: 'L’atelier ne l’a pas encore confirmée : elle sera simplement annulée.', confirm: 'Annuler ma commande', danger: true }))) return;
+    setBusy(true);
+    try { await space.cancelOrder(o.id); notify(`Commande ${o.number} annulée.`); await reload(); onChanged(); } catch (err) { notify(err.message, 'error'); } finally { setBusy(false); }
+  }
   return (
     <section className="recordPanel" aria-labelledby={`commande-${o.id}`}>
       <header className="recordHead">
         <div>
           <h2 id={`commande-${o.id}`} className="subTitle">Commande {o.number}</h2>
           <p className="muted">
-            Créée le {formatDate(o.created_at)}{o.quote_number && <> · devis {o.quote_number}</>}
+            {o.origin === 'client' ? 'Envoyée' : 'Créée'} le {formatDate(o.created_at)}{o.quote_number && <> · devis {o.quote_number}</>}
+            {o.wanted_on && <> · souhaitée pour le {formatDate(o.wanted_on)}</>}
             {o.due_on && <> · prévue le {formatDate(o.due_on)}</>}{o.delivered_at && <> · livrée le {formatDate(o.delivered_at)}</>}
           </p>
         </div>
-        <span className={`tag ${ORDER_TONE[o.status]}`}>{ORDER_LABELS[o.status]}</span>
+        <span className={`tag ${ORDER_TONE[o.status]}`}>{LABELS[o.status]}</span>
         <button type="button" className="iconBtn" onClick={onClose} aria-label="Fermer la commande"><X size={18} aria-hidden="true" /></button>
       </header>
       {isAdmin && <p className="recordClient"><strong>{o.customer_name}</strong> · <a className="waLink" href={waLink(o.customer_phone, `Bonjour ${o.customer_name}, ici E-MAN PROD au sujet de votre commande ${o.number}.`)} target="_blank" rel="noreferrer"><MessageCircle size={13} aria-hidden="true" />{o.customer_phone}</a></p>}
-      {isAdmin && ['confirmee', 'en_production'].includes(o.status)
+      {!isAdmin && waiting && <p className="notice" role="status">Commande envoyée. L’atelier la vérifie et vous confirme le prix et la date. Vous serez prévenu ici et par e-mail.</p>}
+      {!isAdmin && o.status === 'terminee' && <p className="notice" role="status">Votre commande est prête. Contactez-nous pour convenir du retrait ou de la livraison.</p>}
+      {isAdmin && waiting && (
+        <div className="decisionBox">
+          <p><strong>Nouvelle commande du client.</strong> Vérifiez les lignes, fixez les prix et la date promise si vous les connaissez, puis confirmez-la ou refusez-la.</p>
+          <div className="formActions">
+            <button type="button" className="btn btnPrimary btnSmall" disabled={busy} onClick={() => decide('confirmee')}>Confirmer la commande</button>
+            <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={() => decide('annulee')}>Refuser la commande</button>
+          </div>
+        </div>
+      )}
+      {o.client_note && <p className="recordNote"><strong>{isAdmin ? 'Mot du client' : 'Votre message'} :</strong> {o.client_note}</p>}
+      {isAdmin && ['en_attente', 'confirmee', 'en_production'].includes(o.status)
         ? <ItemsEditor quote={o} busy={busy} withValidity={false} saveLabel="Enregistrer les lignes" onSave={async (patch) => {
           setBusy(true);
           try { await updateOrder(o.id, patch); notify('Lignes de la commande enregistrées.'); await reload(); onChanged(); } catch (err) { notify(err.message, 'error'); } finally { setBusy(false); }
         }} />
         : <ItemsTable items={o.items} subtotal={o.subtotal_fcfa} discount={o.discount_fcfa} total={o.total_fcfa} />}
-      <p className="recordActions"><a className="btn btnGhost btnSmall" href={orderPdfUrl(o.id)}><Download size={15} aria-hidden="true" /> Bon de commande (PDF)</a></p>
-      <OrderBilling order={o} team={isAdmin} notify={notify} onChanged={() => { reload(); onChanged(); }} />
+      <p className="recordActions">
+        {!waiting && <a className="btn btnGhost btnSmall" href={orderPdfUrl(o.id)}><Download size={15} aria-hidden="true" /> Bon de commande (PDF)</a>}
+        {o.can_cancel && <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={cancelMine}>Annuler ma commande</button>}
+      </p>
+      {!waiting && <OrderBilling order={o} team={isAdmin} notify={notify} onChanged={() => { reload(); onChanged(); }} />}
       {isAdmin && v && (
         <form className="orderForm" onSubmit={save}>
-          <label className="field"><span className="fieldLabel">Statut</span>
+          {!waiting && <label className="field"><span className="fieldLabel">Statut</span>
             <select value={v.status} onChange={set('status')} disabled={closed}>
-              {[o.status, ...(o.allowed || [])].map((s) => <option key={s} value={s}>{ORDER_LABELS[s]}</option>)}
+              {[o.status, ...(o.allowed || [])].map((s) => <option key={s} value={s}>{waiting && s === 'annulee' ? 'Refusée' : ORDER_LABELS[s]}</option>)}
             </select>
-          </label>
+          </label>}
           <label className="field"><span className="fieldLabel">Date promise</span><input type="date" value={v.due_on} onChange={set('due_on')} disabled={closed} /></label>
           <label className="field"><span className="fieldLabel">Suivie par</span>
             <select value={v.assigned_to} onChange={set('assigned_to')} disabled={closed}>
@@ -358,7 +404,7 @@ function OrderDetail({ id, isAdmin, notify, onClose, onChanged }) {
       )}
       <div className="recordGrid">
         <Files list={o.files} purpose="order" targetId={o.id} canAdd={!closed} notify={notify} onAdded={reload} />
-        <History items={(o.history || []).filter((h) => h.action !== 'order.comment')} labels={ORDER_LABELS} />
+        <History items={(o.history || []).filter((h) => h.action !== 'order.comment')} labels={LABELS} />
       </div>
       {isAdmin && (
         <div className="recordBlock">

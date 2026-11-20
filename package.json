@@ -1,7 +1,7 @@
 {
   "name": "eman-prod-digital",
   "private": true,
-  "version": "3.4.2",
+  "version": "3.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,6 +20,7 @@
     "db:check": "node scripts/db.mjs check",
     "db:sql": "node scripts/build-install-sql.mjs",
     "check": "node scripts/check.mjs",
+    "push:keys": "node scripts/push-keys.mjs",
     "storage:check": "node scripts/storage-check.mjs",
     "backup": "node scripts/files.mjs backup-all",
     "files:backup": "node scripts/files.mjs backup",

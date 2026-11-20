@@ -1,5 +1,24 @@
 # Historique des versions et des vérifications
 
+## v3.6.0 — Notifications push (téléphone et ordinateur)
+
+- PWA (manifeste, icônes 192/512/maskable) et service worker `/sw.js` limité aux notifications (aucun cache, aucune requête interceptée).
+- Web Push standard avec clés VAPID, chiffrement aes128gcm (RFC 8291) et signature VAPID (RFC 8292) faits avec le module crypto de Node : aucune dépendance, aucun service payant. Clés créées automatiquement si les variables VAPID_* sont absentes.
+- Chaque utilisateur active ou désactive les notifications appareil par appareil (rubrique Notifications), voit et retire ses appareils, envoie une notification d'essai. Plusieurs appareils par compte.
+- Envoi branché sur les notifications existantes (espace client et admin conservés) : mêmes destinataires, mêmes droits. Texte d'écran verrouillé générique, sans donnée personnelle. Le clic ouvre la bonne page.
+- Sécurité : appareil rattaché au compte de la session, services push officiels seulement, abonnements expirés supprimés, comptes désactivés exclus, désabonnement à la déconnexion.
+- Migration 009 (additive) : tables push_subscriptions et push_keys. Détails : docs/NOTIFICATIONS-PUSH.md.
+
+## v3.5.0 — Les commandes viennent des clients
+
+- Le client passe commande depuis son espace (« Mes commandes » → « Passer une commande ») : prestations, quantités, précisions, date souhaitée, fichiers.
+- La commande arrive dans l'onglet Commandes de l'atelier avec le statut « À confirmer » et un bandeau « nouvelle commande ». L'atelier vérifie, fixe les prix et la date promise, puis **confirme** ou **refuse**. Ensuite : en production → terminée (prête) → livrée.
+- Le client suit l'avancement avec des mots simples : en attente de confirmation, confirmée, en cours, prête, livrée, annulée. Il est prévenu dans son espace et par e-mail (« commande bien reçue », « confirmée », « prête »…). Il peut annuler tant que l'atelier n'a pas confirmé.
+- L'atelier ne crée plus de commande lui-même (bouton retiré, refusé côté serveur). Les commandes issues d'un devis accepté restent possibles.
+- Sécurité : prix, statut et paiement envoyés par le navigateur sont ignorés ; facture et paiement refusés tant que la commande n'est pas confirmée ; 10 commandes en attente maximum par client.
+- Base : migration 008 (additive) — statut « en_attente », message et date souhaitée du client, date de confirmation, origine.
+- Corrigé : l'émission d'une facture échouait avec le vrai pilote Postgres (types de paramètres) ; liens de fichiers agrandis au doigt.
+
 ## v3.4.2 — Bandeau du haut d'un bord à l'autre
 
 - Le bandeau (adresse, e-mail, WhatsApp, E-MAN CARS) entre par le bord droit, traverse toute la largeur, sort complètement par le bord gauche puis recommence. Vitesse constante d'environ 60 px/s quelle que soit la taille de l'écran.

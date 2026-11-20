@@ -73,6 +73,11 @@ export default function App() {
     if (!user || DEMO) { setUnread(0); return; }
     try { setUnread((await space.notifications({ limit: 1 })).unread); } catch { /* sans gravité */ }
   }, [user]);
+  // Notifications push : cet appareil les avait activées → on le réabonne après la connexion.
+  useEffect(() => {
+    if (user?.id) import('./lib/push.js').then((m) => m.restorePush()).catch(() => {});
+  }, [user?.id]);
+
   useEffect(() => {
     refreshUnread();
     if (!user) return undefined;
@@ -157,6 +162,8 @@ export default function App() {
     /** mode : 'login' (par défaut) ou 'signup'. */
     openAuth: (mode = 'login') => setModal({ type: 'auth', mode: mode === 'signup' ? 'signup' : 'login' }),
     logout: async () => {
+      // Appareil partagé : on coupe le push de ce compte sur cet appareil avant de se déconnecter.
+      try { const { disablePush } = await import('./lib/push.js'); await disablePush({ forget: false }); } catch { /* rien à couper */ }
       try { await auth.logout(); } catch { /* la session expirera d'elle-même */ }
       setUser(null);
       navigate('/');

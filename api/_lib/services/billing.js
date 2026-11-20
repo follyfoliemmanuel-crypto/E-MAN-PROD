@@ -19,6 +19,7 @@ export async function insertPayment(actor, orderId, { amount_fcfa: amount, metho
   const o = await one(`select id, number, status, user_id, total_fcfa::float8 as total, amount_paid_fcfa::float8 as paid from orders where id = $1`, [orderId]);
   if (!o) throw new HttpError(404, 'Commande introuvable.');
   if (o.status === 'annulee' && amount > 0) throw new HttpError(409, 'Cette commande est annulée : aucun paiement ne peut y être enregistré.');
+  if (o.status === 'en_attente' && amount > 0) throw new HttpError(409, 'Confirmez d’abord la commande du client : un paiement ne s’enregistre que sur une commande confirmée.');
   if (o.total > 0 && o.paid + amount > o.total) throw new HttpError(400, `Le montant encaissé (${o.paid + amount} FCFA) dépasse le total de la commande (${o.total} FCFA).`);
   if (o.paid + amount < 0) throw new HttpError(400, 'La correction rendrait le total encaissé négatif.');
   if (receivedOn && receivedOn > new Date().toISOString().slice(0, 10)) throw new HttpError(400, 'La date du paiement ne peut pas être dans le futur.');
@@ -81,6 +82,7 @@ export async function issueInvoice(actor, orderId, { due_date: dueDate = null } 
   if (!isTeam(actor, 'orders')) throw new HttpError(403, 'Accès réservé à l’équipe « commandes ».');
   const o = await loadOrder(actor, orderId);
   if (o.status === 'annulee') throw new HttpError(409, 'Cette commande est annulée : elle ne peut pas être facturée.');
+  if (o.status === 'en_attente') throw new HttpError(409, 'Confirmez d’abord la commande du client : elle ne peut pas encore être facturée.');
   const items = await query(
     `select label, description, quantity::float8 as quantity, unit, unit_price_fcfa::float8 as unit_price_fcfa, line_total_fcfa::float8 as line_total_fcfa
        from order_items where order_id = $1 order by sort, created_at`, [orderId]);
@@ -103,7 +105,7 @@ export async function issueInvoice(actor, orderId, { due_date: dueDate = null } 
   try {
     row = await one(
       `insert into invoices (order_id, invoice_number, customer_name, amount, status, due_date, user_id, total_fcfa, snapshot, issued_at, created_by)
-       values ($1, next_number('FAC'), $2, $3, 'Émise', $4, $5, $3, $6::jsonb, now(), $7) returning id, invoice_number`,
+       values ($1, next_number('FAC'), $2, $3::numeric, 'Émise', $4, $5, $3::bigint, $6::jsonb, now(), $7) returning id, invoice_number`,
       [orderId, o.customer_name, o.total_fcfa, dueDate, o.user_id, JSON.stringify(snapshot), actor.id],
     );
   } catch (err) {

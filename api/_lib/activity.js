@@ -1,6 +1,7 @@
 // Journal d'activité et notifications : deux traces écrites par les règles métier.
 import { query, one } from './db.js';
 import { can } from './auth.js';
+import { pushToUsers } from './push.js';
 
 /** Personne qui agit : utilisateur connecté (avec ses permissions lues en base), ou visiteur. */
 export const actorOf = (user) => (user ? { id: user.id, role: user.role, permissions: user.permissions || [] } : { id: null, role: 'guest', permissions: [] });
@@ -47,9 +48,9 @@ const CATEGORY_OF = (kind) => (
       : kind.startsWith('announcement.') ? 'announcements' : 'general');
 
 /** Événements envoyés par e-mail aux clients, activables un par un par l'administration. */
-export const CLIENT_EMAIL_EVENTS = ['quote_received', 'quote_sent', 'quote_decision', 'order_confirmed', 'order_update', 'order_ready', 'invoice_issued', 'enrollment_confirmed', 'certificate_issued', 'message_new', 'announcement'];
+export const CLIENT_EMAIL_EVENTS = ['quote_received', 'quote_sent', 'quote_decision', 'order_received', 'order_confirmed', 'order_update', 'order_ready', 'invoice_issued', 'enrollment_confirmed', 'certificate_issued', 'message_new', 'announcement'];
 /** Alertes envoyées par e-mail à l'équipe. */
-export const TEAM_EMAIL_EVENTS = { client_new: 'Nouveau client inscrit', quote_new: 'Demande de devis', order_new: 'Commande créée', enrollment_new: 'Inscription à une formation', message_new: 'Nouveau message' };
+export const TEAM_EMAIL_EVENTS = { client_new: 'Nouveau client inscrit', quote_new: 'Demande de devis', order_new: 'Nouvelle commande d’un client', enrollment_new: 'Inscription à une formation', message_new: 'Nouveau message' };
 /** Rubriques que chaque client peut couper pour les e-mails (les notifications dans l'espace restent). */
 export const USER_EMAIL_CATEGORIES = { quotes: 'Devis', orders: 'Commandes et factures', trainings: 'Formations', messages: 'Messages de l’équipe', announcements: 'Informations importantes' };
 
@@ -70,6 +71,8 @@ export async function notifyUser(userId, { kind, title, body = null, link = null
     'insert into notifications (user_id, kind, title, body, link, category) values ($1, $2, $3, $4, $5, $6) returning id',
     [userId, kind, title, body, link, cat],
   );
+  // En complément : notification push sur les appareils de la personne (texte générique, sans donnée personnelle).
+  await pushToUsers([userId], { kind, link });
   if (!email || typeof email !== 'string') return null;
   const u = await one('select email, first_name, full_name, notification_prefs from users where id = $1 and disabled_at is null', [userId]);
   if (!u) return null;
@@ -96,14 +99,16 @@ export async function emailGuest(to, template, { name, vars = {}, details, body,
  * est activé dans les paramètres, alerte e-mail à l'adresse de l'équipe.
  */
 export async function notifyTeam(permission, { kind, title, body = null, link = null, event = null, details = null, exclude = null }) {
-  await query(
+  const rows = await query(
     `insert into notifications (user_id, kind, title, body, link, category)
      select id, $1, $2, $3, $4, 'team' from users
       where disabled_at is null and (role = 'admin' or (role = 'staff' and $5 = any(permissions)))
         and ($6::uuid is null or id <> $6::uuid)
-     returning id`,
+     returning user_id`,
     [kind, title, body, link, permission, exclude],
   );
+  // Push aux mêmes personnes seulement (admins et staff ayant ce droit, comptes actifs).
+  await pushToUsers(rows.map((r) => r.user_id), { kind, link, team: true });
   if (!event) return null;
   const s = await notificationSettings();
   // Par défaut : activé, sauf les messages (souvent nombreux).

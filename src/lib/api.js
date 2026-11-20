@@ -13,12 +13,16 @@ export const QUOTE_LABELS = {
   refuse: 'Refusé', expire: 'Expiré', annule: 'Annulé',
 };
 export const ORDER_LABELS = {
-  confirmee: 'Confirmée', en_production: 'En production', terminee: 'Terminée (prête)', livree: 'Livrée', annulee: 'Annulée',
+  en_attente: 'À confirmer', confirmee: 'Confirmée', en_production: 'En production', terminee: 'Terminée (prête)', livree: 'Livrée', annulee: 'Annulée',
+};
+/** Ce que voit le client : des mots simples sur l'avancement de sa commande. */
+export const CLIENT_ORDER_LABELS = {
+  en_attente: 'En attente de confirmation', confirmee: 'Confirmée', en_production: 'En cours', terminee: 'Prête', livree: 'Livrée', annulee: 'Annulée',
 };
 export const PAYMENT_LABELS = { non_paye: 'Non payé', acompte: 'Acompte payé', paye: 'Payé' };
 export const TRAINING_STATUSES = ['Nouvelle demande', 'Contacté', 'Inscrit', 'Terminé', 'Annulé'];
 
-async function call(path, { method = 'GET', body } = {}) {
+export async function call(path, { method = 'GET', body } = {}) {
   let res;
   try {
     res = await fetch(path, {
@@ -112,7 +116,7 @@ const DEMO_QUOTE_NEXT = {
   nouveau: ['en_etude', 'envoye', 'annule'], en_etude: ['envoye', 'annule'], envoye: ['en_etude', 'accepte', 'refuse', 'expire', 'annule'],
   accepte: ['annule'], refuse: ['en_etude'], expire: ['en_etude'], annule: [],
 };
-const DEMO_ORDER_NEXT = { confirmee: ['en_production', 'annulee'], en_production: ['terminee', 'annulee'], terminee: ['livree', 'en_production'], livree: [], annulee: [] };
+const DEMO_ORDER_NEXT = { en_attente: ['confirmee', 'annulee'], confirmee: ['en_production', 'annulee'], en_production: ['terminee', 'annulee'], terminee: ['livree', 'en_production'], livree: [], annulee: [] };
 const demoFind = (list, id) => {
   const x = list.find((q) => q.id === id);
   if (!x) throw new Error('Introuvable.');
@@ -179,7 +183,7 @@ export async function getOrder(id) {
   if (DEMO) {
     await wait(120);
     const o = clone(demoFind(demo.orders, id));
-    return { ...o, allowed: DEMO_ORDER_NEXT[o.status] };
+    return { ...o, allowed: DEMO_ORDER_NEXT[o.status], can_cancel: demo.user?.role === 'client' && o.status === 'en_attente' };
   }
   return (await call('/api/orders?id=' + encodeURIComponent(id))).order;
 }
@@ -403,7 +407,24 @@ export const space = {
   supportSend: (body, userId) => call('/api/inbox', { method: 'POST', body: userId ? { support_user_id: userId, body } : { support: true, body } }),
   orderComment: (id, text) => call('/api/orders', { method: 'POST', body: { action: 'comment', id, text } }),
   members: () => call('/api/orders?members=1'),
-  createOrder: (body) => call('/api/orders', { method: 'POST', body }),
+  /** Le client passe commande : elle arrive « en attente de confirmation » à l'atelier. */
+  createOrder: async (body) => {
+    if (DEMO) {
+      await wait(200);
+      const number = 'CMD-2026-' + String(demo.orders.length + 8).padStart(5, '0');
+      const items = body.items.map((i) => item(i.label, Number(i.quantity) || 1, null, i.unit || 'pièce'));
+      const o = { id: 'o' + Date.now(), number, status: 'en_attente', payment_status: 'non_paye', amount_paid_fcfa: 0, items, subtotal_fcfa: 0, discount_fcfa: 0, total_fcfa: 0,
+        summary: items.map((i) => i.label).join(', '), client_note: body.client_note || null, wanted_on: body.wanted_on || null, due_on: null, customer_name: demo.user.full_name, customer_phone: body.phone,
+        created_at: new Date().toISOString(), files: [], history: [{ action: 'order.created', created_at: new Date().toISOString(), data: {} }] };
+      demo.orders.unshift(o);
+      return { order: { id: o.id, number } };
+    }
+    return call('/api/orders', { method: 'POST', body });
+  },
+  cancelOrder: async (id) => {
+    if (DEMO) { await wait(150); const o = demoFind(demo.orders, id); o.status = 'annulee'; return { order: o }; }
+    return call('/api/orders', { method: 'POST', body: { action: 'cancel', id } });
+  },
   createQuote: (body) => call('/api/quotes', { method: 'POST', body }),
   enrollment: (id) => call('/api/trainings?id=' + encodeURIComponent(id)),
   enrollments: (filters = {}) => call('/api/trainings?' + qs(filters)).then((r) => r.registrations),

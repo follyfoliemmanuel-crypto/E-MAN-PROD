@@ -46,6 +46,7 @@ export async function stats(actor) {
     out.sections.push('orders');
     tasks.push(one(
       `select count(*)::int as total,
+              count(*) filter (where status = 'en_attente')::int as pending,
               count(*) filter (where status = 'confirmee')::int as confirmed,
               count(*) filter (where status = 'en_production')::int as in_production,
               count(*) filter (where status in ('terminee', 'livree'))::int as done,

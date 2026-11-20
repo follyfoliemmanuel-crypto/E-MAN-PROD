@@ -135,7 +135,7 @@ export const imageUrl = required(
 // Statuts : une seule définition, utilisée par les règles métier et la base.
 // ---------------------------------------------------------------------------
 export const QUOTE_STATUSES = ['nouveau', 'en_etude', 'envoye', 'accepte', 'refuse', 'expire', 'annule'];
-export const ORDER_STATUSES = ['confirmee', 'en_production', 'terminee', 'livree', 'annulee'];
+export const ORDER_STATUSES = ['en_attente', 'confirmee', 'en_production', 'terminee', 'livree', 'annulee'];
 export const PAYMENT_STATUSES = ['non_paye', 'acompte', 'paye'];
 export const ENROLLMENT_STATUSES = ['Nouvelle demande', 'Contacté', 'Inscrit', 'Terminé', 'Annulé'];
 export const PORTFOLIO_STATUSES = ['brouillon', 'publie', 'masque'];

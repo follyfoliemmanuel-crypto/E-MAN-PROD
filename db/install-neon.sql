@@ -1,5 +1,5 @@
 -- =============================================================================
--- E-MAN PROD v3.4.0 : installation ou mise à jour de la base de données
+-- E-MAN PROD v3.5.0 : installation ou mise à jour de la base de données
 -- Fichier généré par « npm run db:sql » à partir de db/migrations : ne pas modifier à la main.
 --
 -- Utilisation (Neon) : console.neon.tech → votre projet → SQL Editor → coller tout
@@ -1163,6 +1163,103 @@ end
 $install$;
 
 -- -----------------------------------------------------------------------------
+-- Migration 008_client_orders.sql
+-- -----------------------------------------------------------------------------
+do $install$
+declare applied text;
+begin
+  select checksum into applied from schema_migrations where version = '008';
+  if applied is null then
+    execute $m008$
+-- 008 — Les commandes sont passées par les clients depuis leur espace.
+-- L'atelier les reçoit « en attente », les confirme (ou les refuse), puis fait avancer leur statut.
+-- Migration uniquement ADDITIVE : aucune ligne modifiée ni supprimée, aucune colonne retirée.
+
+-- Nouveau statut de départ : « en attente de confirmation » (les anciens restent acceptés).
+-- Le nom de l'ancienne contrainte varie selon l'historique de la base (orders_status_check, orders_status_check1…) :
+-- on retire toute contrainte de statut existante, quel que soit son nom, avant de poser la nouvelle.
+do $$
+declare c record;
+begin
+  for c in select conname from pg_constraint
+            where conrelid = 'orders'::regclass and contype = 'c' and pg_get_constraintdef(oid) like '%confirmee%'
+  loop
+    execute format('alter table orders drop constraint %I', c.conname);
+  end loop;
+end $$;
+alter table orders add constraint orders_status_values
+  check (status in ('en_attente', 'confirmee', 'en_production', 'terminee', 'livree', 'annulee'));
+
+-- Ce que le client écrit en passant commande, et la date qu'il souhaite (l'atelier fixe la date promise).
+alter table orders add column if not exists client_note text check (char_length(client_note) <= 4000);
+alter table orders add column if not exists wanted_on date;
+alter table orders add column if not exists confirmed_at timestamptz;
+-- Qui a passé la commande : le client lui-même, ou un devis accepté puis converti.
+alter table orders add column if not exists origin text check (origin in ('devis', 'client', 'atelier'));
+
+create index if not exists orders_pending_idx on orders (created_at desc) where status = 'en_attente';
+$m008$;
+    insert into schema_migrations (version, name, checksum) values ('008', 'client_orders', '7125045addd3dcb9ca23ec997cd1b06de2e573908b97c474f5a62ca55283b460');
+    raise notice 'Migration 008_client_orders.sql appliquée.';
+  elsif applied <> '7125045addd3dcb9ca23ec997cd1b06de2e573908b97c474f5a62ca55283b460' then
+    raise exception 'La migration 008_client_orders.sql a été modifiée après application : rien n''a été changé.';
+  else
+    raise notice 'Migration 008_client_orders.sql déjà appliquée.';
+  end if;
+end
+$install$;
+
+-- -----------------------------------------------------------------------------
+-- Migration 009_push.sql
+-- -----------------------------------------------------------------------------
+do $install$
+declare applied text;
+begin
+  select checksum into applied from schema_migrations where version = '009';
+  if applied is null then
+    execute $m009$
+-- 009 — Notifications push (en complément des notifications dans l'espace et des e-mails).
+-- Migration ADDITIVE : deux nouvelles tables, rien n'est modifié ni supprimé.
+
+-- Un abonnement par appareil (navigateur) ; un compte peut en avoir plusieurs.
+-- L'adresse (endpoint) est unique : si quelqu'un d'autre se connecte sur le même appareil
+-- et active les notifications, l'appareil passe à son compte et l'ancien n'y reçoit plus rien.
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  endpoint text not null unique check (char_length(endpoint) between 20 and 1000),
+  p256dh text not null check (char_length(p256dh) between 80 and 100),
+  auth text not null check (char_length(auth) between 16 and 30),
+  device_label text check (char_length(device_label) <= 80),
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  last_success_at timestamptz,
+  failures int not null default 0,
+  last_error text,
+  last_error_at timestamptz
+);
+create index if not exists push_subscriptions_user_idx on push_subscriptions (user_id);
+
+-- Paire de clés VAPID créée automatiquement si VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY ne sont pas définies.
+-- Lue uniquement par le serveur ; la clé privée n'est jamais envoyée au navigateur.
+create table if not exists push_keys (
+  id int primary key check (id = 1),
+  public_key text not null,
+  private_key text not null,
+  created_at timestamptz not null default now()
+);
+$m009$;
+    insert into schema_migrations (version, name, checksum) values ('009', 'push', 'c4d6edfb2a236f940bf79219592b5ae54597218bac97d4b499c94667c4e60f9f');
+    raise notice 'Migration 009_push.sql appliquée.';
+  elsif applied <> 'c4d6edfb2a236f940bf79219592b5ae54597218bac97d4b499c94667c4e60f9f' then
+    raise exception 'La migration 009_push.sql a été modifiée après application : rien n''a été changé.';
+  else
+    raise notice 'Migration 009_push.sql déjà appliquée.';
+  end if;
+end
+$install$;
+
+-- -----------------------------------------------------------------------------
 -- Contenu de départ (modifiable ensuite dans l'espace administrateur).
 -- « on conflict do nothing » : un élément déjà présent n'est jamais modifié.
 -- -----------------------------------------------------------------------------
@@ -1214,7 +1311,7 @@ insert into site_settings (key, value) values ('cars', '{"title":"E-MAN CARS","t
 
 commit;
 
--- Vérification : doit afficher les migrations 001 à 007.
+-- Vérification : doit afficher les migrations 001 à 009.
 select version, name, applied_at from schema_migrations order by version;
 
 -- -----------------------------------------------------------------------------

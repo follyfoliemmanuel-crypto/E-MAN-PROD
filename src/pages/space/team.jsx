@@ -39,7 +39,7 @@ export function TeamHome({ user, go }) {
               <StatCard label="Devis acceptés" value={fmt(data.quotes.accepted)} />
             </>}
             {data.orders && <>
-              <StatCard label="Commandes" value={fmt(data.orders.total)} hint={`${fmt(data.orders.confirmed)} à lancer`} />
+              <StatCard label="Commandes" value={fmt(data.orders.total)} hint={`${fmt(data.orders.pending || 0)} à confirmer, ${fmt(data.orders.confirmed)} à lancer`} />
               <StatCard label="En production" value={fmt(data.orders.in_production)} />
               <StatCard label="Terminées ou livrées" value={fmt(data.orders.done)} />
               <StatCard label="Reste à encaisser" value={`${fmt(Math.max(data.orders.ordered_fcfa - data.orders.paid_fcfa, 0))} FCFA`} hint={`${fmt(data.orders.paid_fcfa)} FCFA encaissés`} />

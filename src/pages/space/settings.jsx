@@ -123,11 +123,11 @@ function DocumentsForm({ value, onSave }) {
 
 const CLIENT_EVENTS = {
   quote_received: 'Demande de devis reçue', quote_sent: 'Devis disponible', quote_decision: 'Devis accepté ou refusé',
-  order_confirmed: 'Commande confirmée', order_update: 'Changement de statut d’une commande', order_ready: 'Commande prête',
+  order_received: 'Commande bien reçue (envoyée par le client)', order_confirmed: 'Commande confirmée', order_update: 'Changement de statut d’une commande', order_ready: 'Commande prête',
   invoice_issued: 'Facture émise', enrollment_confirmed: 'Inscription à une formation confirmée', certificate_issued: 'Attestation disponible',
   message_new: 'Réponse de l’équipe', announcement: 'Information importante (si demandé à la publication)',
 };
-const TEAM_EVENTS = { client_new: 'Nouveau client inscrit', quote_new: 'Demande de devis', order_new: 'Commande créée', enrollment_new: 'Inscription à une formation', message_new: 'Nouveau message d’un client' };
+const TEAM_EVENTS = { client_new: 'Nouveau client inscrit', quote_new: 'Demande de devis', order_new: 'Nouvelle commande d’un client', enrollment_new: 'Inscription à une formation', message_new: 'Nouveau message d’un client' };
 
 function NotificationsForm({ value, business, onSave }) {
   const [client, setClient] = useState(() => Object.fromEntries(Object.keys(CLIENT_EVENTS).map((k) => [k, value.client_email?.[k] !== false])));

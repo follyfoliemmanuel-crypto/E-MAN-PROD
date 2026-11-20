@@ -34,7 +34,7 @@ export function ClientHome({ user, go, unread }) {
         <>
           <div className="statGrid">
             <StatCard label="Devis en cours" value={data.quotes.filter((q) => ['nouveau', 'en_etude', 'envoye'].includes(q.status)).length} hint={`${data.quotes.filter((q) => q.status === 'envoye').length} à valider de votre côté`} />
-            <StatCard label="Commandes en cours" value={data.orders.filter((o) => ['confirmee', 'en_production', 'terminee'].includes(o.status)).length} hint={`${data.orders.filter((o) => o.status === 'terminee').length} prête(s) à retirer`} />
+            <StatCard label="Commandes en cours" value={data.orders.filter((o) => ['en_attente', 'confirmee', 'en_production', 'terminee'].includes(o.status)).length} hint={`${data.orders.filter((o) => o.status === 'en_attente').length} en attente de confirmation, ${data.orders.filter((o) => o.status === 'terminee').length} prête(s) à retirer`} />
             <StatCard label="Inscriptions" value={data.regs.filter((r) => r.status !== 'Annulé').length} hint={`${data.regs.filter((r) => r.status === 'Inscrit').length} confirmée(s)`} />
             <StatCard label="Notifications non lues" value={unread} />
           </div>
@@ -153,6 +153,91 @@ export function QuoteRequestForm({ user, notify, onDone, onCancel }) {
       {error && <p className="formError" role="alert">{error}</p>}
       <div className="formActions">
         <button className="btn btnPrimary" disabled={busy}>{busy ? 'Envoi…' : 'Envoyer la demande'}</button>
+        <button type="button" className="btn btnGhost" onClick={onCancel}>Annuler</button>
+      </div>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Passer une commande (client). L'atelier la confirme, fixe le prix et la date.
+// ---------------------------------------------------------------------------
+export function OrderRequestForm({ user, notify, onDone, onCancel }) {
+  const cat = useCatalog();
+  const blank = { service_slug: '', label: '', quantity: 1, unit: '', description: '' };
+  const [items, setItems] = useState([{ ...blank }]);
+  const [note, setNote] = useState('');
+  const [wanted, setWanted] = useState('');
+  const [phone, setPhone] = useState(user.phone || '');
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
+  const set = (i, k) => (e) => setItems((l) => l.map((it, j) => (j === i ? { ...it, [k]: e.target.value } : it)));
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const lines = items.map((it) => ({ ...it, label: it.label || cat.prestations.find((p) => p.slug === it.service_slug)?.title || '' }));
+      const { order } = await space.createOrder({ phone, items: lines, client_note: note || null, wanted_on: wanted || null });
+      const failed = [];
+      for (const f of files) {
+        try { await uploadFile('order', order.id, f); } catch (err) { failed.push(`${f.name} : ${err.message}`); }
+      }
+      notify(`Commande ${order.number} envoyée. L’atelier la vérifie et vous confirme le prix et la date ici.`);
+      if (failed.length) notify(`Fichier(s) non joint(s) — ${failed.join(' ; ')}`, 'error');
+      onDone(order);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="spaceForm" onSubmit={submit}>
+      <h2 className="subTitle">Passer une commande</h2>
+      <p className="muted">Choisissez vos prestations. L’atelier reçoit votre commande, la confirme avec le prix et la date, puis vous suivez son avancement ici : en attente, confirmée, en cours, prête, livrée.</p>
+      {items.map((it, i) => (
+        <fieldset key={i} className="lineEditor">
+          <legend>Prestation {i + 1}</legend>
+          <div className="fieldRow">
+            <label className="field"><span className="fieldLabel">Prestation</span>
+              <select required={!it.label} value={it.service_slug} onChange={set(i, 'service_slug')}>
+                <option value="">Choisir…</option>
+                {cat.prestations.map((p) => <option key={p.slug} value={p.slug}>{p.title}</option>)}
+              </select>
+            </label>
+            <label className="field"><span className="fieldLabel">Ce que vous commandez</span>
+              <input maxLength={160} value={it.label} onChange={set(i, 'label')} placeholder="ex. Bâche 3 × 2 m, 500 flyers A5…" />
+            </label>
+          </div>
+          <div className="fieldRow">
+            <label className="field"><span className="fieldLabel">Quantité</span><input type="number" min="1" step="any" required value={it.quantity} onChange={set(i, 'quantity')} /></label>
+            <label className="field"><span className="fieldLabel">Unité (facultatif)</span><input maxLength={30} value={it.unit} onChange={set(i, 'unit')} placeholder="pièces, m², lots…" /></label>
+          </div>
+          <label className="field"><span className="fieldLabel">Précisions (format, couleurs, finitions…)</span>
+            <textarea rows={2} maxLength={2000} value={it.description} onChange={set(i, 'description')} />
+          </label>
+          {items.length > 1 && <button type="button" className="btn btnGhost btnSmall" onClick={() => setItems((l) => l.filter((_, j) => j !== i))}><Trash2 size={15} aria-hidden="true" /> Retirer cette prestation</button>}
+        </fieldset>
+      ))}
+      <button type="button" className="btn btnGhost btnSmall" disabled={items.length >= 20} onClick={() => setItems((l) => [...l, { ...blank }])}><Plus size={16} aria-hidden="true" /> Ajouter une prestation</button>
+      <div className="fieldRow">
+        <label className="field"><span className="fieldLabel">Pour quand ? (facultatif)</span><input type="date" min={today} value={wanted} onChange={(e) => setWanted(e.target.value)} /></label>
+        <label className="field"><span className="fieldLabel">Téléphone ou WhatsApp</span><input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} /></label>
+      </div>
+      <label className="field"><span className="fieldLabel">Un mot pour l’atelier (facultatif)</span>
+        <textarea rows={3} maxLength={4000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="ex. Livraison à Baguida, logo joint, couleurs de la charte…" />
+      </label>
+      <label className="field"><span className="fieldLabel">Fichiers (logo, maquette, photos…)</span>
+        <input type="file" multiple accept={ACCEPT} disabled={DEMO} onChange={(e) => setFiles([...e.target.files].slice(0, 10))} />
+        <LimitHint purpose="order" formats="JPG, PNG, PDF, AI, EPS, PSD, CDR ou ZIP" per=" par fichier" after=", 10 fichiers" />
+      </label>
+      {files.length > 0 && <ul className="fileList">{files.map((f) => <li key={f.name}><Paperclip size={14} aria-hidden="true" />{f.name}</li>)}</ul>}
+      {error && <p className="formError" role="alert">{error}</p>}
+      <div className="formActions">
+        <button className="btn btnPrimary" disabled={busy}>{busy ? 'Envoi…' : 'Envoyer la commande'}</button>
         <button type="button" className="btn btnGhost" onClick={onCancel}>Annuler</button>
       </div>
     </form>

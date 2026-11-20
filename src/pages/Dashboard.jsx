@@ -9,7 +9,8 @@ import { Avatar } from '../components/Avatar.jsx';
 import { CoursesAdmin, GalleryAdmin, PrestationsAdmin } from './admin.jsx';
 import { QuotesPanel, OrdersPanel, ProfilePanel } from './requests.jsx';
 import { SecurityPanel, TeamPanel } from './security.jsx';
-import { ClientHome, QuoteRequestForm, MyTrainings, MyDocuments, NotificationsSection, SupportSection, AvatarEditor, EmailPrefs } from './space/client.jsx';
+import { PushSettings } from './space/push.jsx';
+import { ClientHome, QuoteRequestForm, OrderRequestForm, MyTrainings, MyDocuments, NotificationsSection, SupportSection, AvatarEditor, EmailPrefs } from './space/client.jsx';
 import { SettingsAdmin, AnnouncementsAdmin } from './space/settings.jsx';
 import { TeamHome, ClientsAdmin, TeamCreateForm, SupportInbox, ContentAdmin, StaffInvite, MemberHistory } from './space/team.jsx';
 import { ConfirmProvider, SectionHead, Loading, ErrorBox, useStackedTables } from './space/ui.jsx';
@@ -153,11 +154,12 @@ function Section({ section, params, user, setUser, notify, go, can, isAdmin, isC
         </>
       );
     case 'commandes':
-      if (creating && !isClient) return <TeamCreateForm kind="order" notify={notify} onCancel={() => setCreating(false)} onDone={(o) => go('commandes', { id: o.id })} />;
+      // Les commandes viennent des clients ; l'équipe les confirme et fait avancer leur statut.
+      if (creating && isClient) return <OrderRequestForm user={user} notify={notify} onCancel={() => setCreating(false)} onDone={(o) => { setCreating(false); go('commandes', { id: o.id }); }} />;
       return (
         <>
-          <SectionHead title={isClient ? 'Mes commandes' : 'Commandes'} lead={isClient ? 'Suivez l’avancement de vos commandes et téléchargez vos bons de commande.' : 'Production, paiements, collaborateurs et commentaires internes.'}
-            actions={!isClient && <button type="button" className="btn btnPrimary btnSmall" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> Nouvelle commande</button>} />
+          <SectionHead title={isClient ? 'Mes commandes' : 'Commandes'} lead={isClient ? 'Passez commande, puis suivez son avancement : en attente, confirmée, en cours, prête, livrée.' : 'Les commandes envoyées par vos clients : confirmez-les ou refusez-les, puis faites avancer leur statut.'}
+            actions={isClient && <button type="button" className="btn btnPrimary btnSmall" onClick={() => setCreating(true)}><Plus size={16} aria-hidden="true" /> Passer une commande</button>} />
           <OrdersPanel isAdmin={can('orders')} notify={notify} search="" initialId={params.id || null} onChanged={refreshUnread} />
         </>
       );
@@ -166,7 +168,7 @@ function Section({ section, params, user, setUser, notify, go, can, isAdmin, isC
         : <><SectionHead title="Formations" lead="Créer, modifier, archiver ; tarifs, durées, dates, places et apprenants." /><CoursesAdmin notify={notify} /></>;
     case 'inscriptions': return <Registrations notify={notify} />;
     case 'documents': return <MyDocuments />;
-    case 'notifications': return <NotificationsSection go={go} onRead={refreshUnread} />;
+    case 'notifications': return <><NotificationsSection go={go} onRead={refreshUnread} /><PushSettings notify={notify} team={!isClient} /></>;
     case 'assistance': return isClient ? <SupportSection notify={notify} /> : <SupportInbox notify={notify} params={params} />;
     case 'clients': return <ClientsAdmin notify={notify} isAdmin={isAdmin} />;
     case 'realisations': return <><SectionHead title="Réalisations" lead="Photos de vos travaux, catégories, publication." /><GalleryAdmin notify={notify} /></>;

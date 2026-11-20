@@ -15,6 +15,8 @@
 //   GET ?team=1 · GET ?security=1        admin : équipe et permissions · journal de sécurité
 //   POST {action: 'role', user_id, role, permissions}   admin : rôle et permissions d'un compte
 //   POST {action: 'disable', user_id, disabled} · {action: 'revoke_sessions', user_id}   admin
+//   GET ?push=1                          mes appareils abonnés aux notifications push + clé publique VAPID
+//   POST {action: 'push_subscribe', subscription} · {action: 'push_unsubscribe', id | endpoint} · {action: 'push_test'}
 import { z } from 'zod';
 import { handler, send, readJson } from './_lib/http.js';
 import { requireUser, requireAdmin, requirePermission, PERMISSIONS } from './_lib/auth.js';
@@ -25,6 +27,15 @@ import { actorOf, USER_EMAIL_CATEGORIES } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
 import * as clients from './_lib/services/clients.js';
 import { submitTestimonial } from './_lib/services/content.js';
+import * as pushSubs from './_lib/services/pushSubs.js';
+import { rateLimit } from './_lib/auth.js';
+
+const b64url = (min, max) => z.string().min(min).max(max).regex(/^[A-Za-z0-9_-]+=*$/, 'Clé invalide.');
+const pushSchema = z.object({
+  endpoint: z.string().url('Adresse invalide.').max(1000).refine((u) => u.startsWith('https://') || u.startsWith('http://127.0.0.1') || u.startsWith('http://localhost'), 'Adresse invalide.'),
+  expirationTime: z.number().nullable().optional(),
+  keys: z.object({ p256dh: b64url(80, 100), auth: b64url(16, 30) }),
+});
 
 const patchSchema = z.object({
   full_name: s.text('Nom', { min: 2, max: 120 }),
@@ -87,6 +98,7 @@ export default handler({
     }
     if (q.history === '1') return send(res, 200, await clients.historyOfClient(actor, user.id));
     if (q.prefs === '1') return send(res, 200, await clients.emailPrefs(user.id));
+    if (q.push === '1') return send(res, 200, await pushSubs.pushStatus(user.id));
     send(res, 200, await clients.getAccount(actor));
   },
 
@@ -98,6 +110,22 @@ export default handler({
 
   async POST(req, res) {
     const body = await readJson(req);
+    if (body.action === 'push_subscribe' || body.action === 'push_unsubscribe' || body.action === 'push_test') {
+      // Toujours le compte de la session : impossible d'abonner un appareil au compte de quelqu'un d'autre.
+      const me = actorOf(await requireUser(req));
+      await rateLimit(`push:${me.id}`, 30, 60, 'Trop de changements de notifications. Réessayez dans un moment.');
+      if (body.action === 'push_subscribe') {
+        const sub = s.parse(pushSchema, body.subscription);
+        return send(res, 201, await pushSubs.subscribe(me, sub, req.headers['user-agent']));
+      }
+      if (body.action === 'push_unsubscribe') {
+        const t = s.parse(z.object({ id: s.optionalUuid('Appareil'), endpoint: z.string().url().max(1000).optional().nullable() }), body);
+        if (!t.id && !t.endpoint) return send(res, 400, { error: 'Appareil manquant.' });
+        return send(res, 200, await pushSubs.unsubscribe(me, t));
+      }
+      await rateLimit(`push-test:${me.id}`, 5, 10, 'Trop d’essais. Réessayez dans quelques minutes.');
+      return send(res, 200, await pushSubs.testPush(me));
+    }
     if (body.action === 'testimonial') {
       const user = await requireUser(req);
       const t = s.parse(z.object({

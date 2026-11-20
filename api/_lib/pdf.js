@@ -294,7 +294,7 @@ export async function quotePdf(actor, id) {
   return { bytes, filename: `devis-${q.number}.pdf` };
 }
 
-const ORDER_STATUS = { confirmee: 'Confirmée', en_production: 'En production', terminee: 'Terminée, prête', livree: 'Livrée', annulee: 'Annulée' };
+const ORDER_STATUS = { en_attente: 'En attente de confirmation', confirmee: 'Confirmée', en_production: 'En production', terminee: 'Terminée, prête', livree: 'Livrée', annulee: 'Annulée' };
 
 export async function orderPdf(actor, id) {
   const o = await getOrder(actor, id);

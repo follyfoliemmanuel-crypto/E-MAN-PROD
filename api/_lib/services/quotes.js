@@ -308,8 +308,8 @@ export async function convertToOrder(actor, id, { due_on = null } = {}) {
   try {
     row = await one(
       `with o as (
-         insert into orders (quote_id, user_id, customer_name, customer_phone, customer_email, discount_fcfa, due_on)
-         select id, user_id, customer_name, customer_phone, customer_email, discount_fcfa, $2::date
+         insert into orders (quote_id, user_id, customer_name, customer_phone, customer_email, discount_fcfa, due_on, origin, confirmed_at)
+         select id, user_id, customer_name, customer_phone, customer_email, discount_fcfa, $2::date, 'devis', now()
            from quotes where id = $1 and status = 'accepte'
          returning id, number
        ), i as (

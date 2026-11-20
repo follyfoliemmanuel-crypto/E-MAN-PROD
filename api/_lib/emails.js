@@ -57,6 +57,14 @@ export const TEMPLATES = {
     intro: 'Bonjour {prenom}, le devis {numero} est désormais {decision}.',
     cta: 'Voir le devis',
   },
+  order_received: {
+    label: 'Commande envoyée par le client', category: 'orders',
+    vars: ['prenom', 'numero', 'lien'],
+    subject: 'Commande {numero} bien reçue',
+    title: 'Nous avons reçu votre commande',
+    intro: 'Bonjour {prenom}, votre commande {numero} est bien arrivée à l’atelier. Nous la vérifions et vous confirmons le prix et la date dans votre espace.',
+    cta: 'Suivre ma commande',
+  },
   order_confirmed: {
     label: 'Confirmation de commande', category: 'orders',
     vars: ['prenom', 'numero', 'total', 'date_prevue', 'lien'],

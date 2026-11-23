@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import { handler, send, readJson, HttpError } from './_lib/http.js';
 import { requirePermission, maskEmail } from './_lib/auth.js';
+import { assertRecentMfa } from './_lib/mfa.js';
 import { actorOf, CLIENT_EMAIL_EVENTS, TEAM_EMAIL_EVENTS } from './_lib/activity.js';
 import { query, one } from './_lib/db.js';
 import { TEMPLATES, renderEmail } from './_lib/emails.js';
@@ -295,7 +296,10 @@ export default handler({
     const body = await readJson(req);
     const fn = actions[body.action];
     if (!fn) throw new HttpError(400, 'Action inconnue.');
-    const actor = actorOf(await requirePermission(req, permissionOf(body.action)));
+    const user = await requirePermission(req, permissionOf(body.action));
+    // Réglages du site (e-mails, connexion, stockage…) : action sensible, code Google Authenticator récent.
+    if (body.action === 'setting.update') assertRecentMfa(user);
+    const actor = actorOf(user);
     send(res, 200, { result: await fn(actor, body, req) });
   },
 });

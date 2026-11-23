@@ -1,7 +1,8 @@
 // Sécurité du compte (tout utilisateur) et gestion de l'équipe (administrateur).
 // L'écran n'accorde aucun droit : chaque action est vérifiée par le serveur.
 import React, { useCallback, useEffect, useState } from 'react';
-import { DEMO, security, formatDate } from '../lib/api.js';
+import { DEMO, security, formatDate, mfaApi } from '../lib/api.js';
+import { PasswordInput } from '../components/PasswordInput.jsx';
 
 const PERMISSION_LABELS = {
   quotes: 'Devis et messages des devis',
@@ -85,11 +86,11 @@ export function SecurityPanel({ notify, onLoggedOut }) {
         }}>
           {data.has_password && (
             <label className="field"><span className="fieldLabel">Mot de passe actuel</span>
-              <input type="password" required autoComplete="current-password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} />
+              <PasswordInput required autoComplete="current-password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} />
             </label>
           )}
           <label className="field"><span className="fieldLabel">Nouveau mot de passe</span>
-            <input type="password" required minLength={10} maxLength={128} autoComplete="new-password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} />
+            <PasswordInput required minLength={10} maxLength={128} autoComplete="new-password" value={pw.new_password} onChange={(e) => setPw({ ...pw, new_password: e.target.value })} />
             <span className="hint">10 caractères minimum. Évitez les mots de passe courants, votre nom ou votre e-mail.</span>
           </label>
           <button className="btn btnPrimary btnSmall" disabled={busy || DEMO}>Enregistrer</button>
@@ -169,7 +170,7 @@ export function TeamPanel({ notify, me }) {
             <thead><tr><th scope="col">Date</th><th scope="col">Évènement</th><th scope="col">Compte</th><th scope="col">Détail</th></tr></thead>
             <tbody>
               {(logData?.events || []).slice(0, 80).map((ev, i) => (
-                <tr key={i} className={/failed|forbidden|rate_limited|google_failed/.test(ev.action) ? 'warn' : undefined}>
+                <tr key={i} className={/failed|forbidden|rate_limited|google_failed|upload_blocked/.test(ev.action) ? 'warn' : undefined}>
                   <td>{when(ev.created_at)}</td>
                   <td>{ev.action}</td>
                   <td>{ev.actor_email || ev.data?.email || '—'}</td>
@@ -218,6 +219,12 @@ function MemberRow({ u, me, busy, run }) {
             <button className="btn btnPrimary btnSmall" disabled={busy}>Enregistrer</button>
             <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={() => run(() => security.revokeUser(u.id), `Sessions de ${u.full_name} fermées.`)}>Fermer ses sessions</button>
             <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={() => run(() => security.disable(u.id, !u.disabled_at), u.disabled_at ? 'Compte réactivé.' : 'Compte désactivé.')}>{u.disabled_at ? 'Réactiver' : 'Désactiver le compte'}</button>
+            {u.role !== 'client' && (
+              <button type="button" className="btn btnGhost btnSmall" disabled={busy} title="Téléphone perdu sans code de récupération"
+                onClick={() => window.confirm(`Réinitialiser Google Authenticator de ${u.full_name} ? Ses sessions seront fermées et il devra le réactiver.`) && run(() => mfaApi.resetFor(u.id), `Google Authenticator de ${u.full_name} réinitialisé.`)}>
+                Réinitialiser Google Authenticator
+              </button>
+            )}
           </div>
         </form>
       )}

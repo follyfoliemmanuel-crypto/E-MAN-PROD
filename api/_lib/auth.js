@@ -97,6 +97,8 @@ const COOKIE_DEV = 'emp_session';
 const COOKIE_PROD = '__Host-emp_session';
 const secureContext = (req) => isHttps(req) || process.env.VERCEL_ENV === 'production';
 const cookieName = (req) => (secureContext(req) ? COOKIE_PROD : COOKIE_DEV);
+/** Cookies de la double authentification : même règle (« __Host- » en HTTPS). */
+export const mfaCookie = (req, base) => (secureContext(req) ? `__Host-${base}` : base);
 
 export function cookie(req, name, value, maxAge, { path = '/' } = {}) {
   return [`${name}=${value}`, `Path=${path}`, 'HttpOnly', 'SameSite=Lax', `Max-Age=${maxAge}`, secureContext(req) ? 'Secure' : null]
@@ -147,13 +149,40 @@ export async function promoteOwner(req, userId) {
   if (row) await logSecurity(req, 'auth.owner_promoted', { userId, role: 'admin', data: { email: maskEmail(row.email) } });
 }
 
-export async function createSession(req, res, userId, { method = 'password' } = {}) {
+/**
+ * Ouvre une session. Équipe avec double authentification : si l'appareil n'est pas un appareil de
+ * confiance valable, AUCUNE session n'est ouverte : une étape « code à 6 chiffres » est créée
+ * (cookie de 10 minutes) et la fonction renvoie { mfa_required: true }.
+ * @param {{method?: string, mfaDone?: boolean, trustedDeviceId?: string|null}} opts
+ *   mfaDone : le code vient d'être vérifié (ou la personne est déjà dans une session vérifiée).
+ */
+export async function createSession(req, res, userId, { method = 'password', mfaDone = false, trustedDeviceId = null, verifiedAt = null } = {}) {
   await promoteOwner(req, userId);
+  const { isTeamRole, findTrustedDevice, createChallenge, TRUST_COOKIE, CHALLENGE_COOKIE, MFA } = await import('./mfa.js');
+  const u = await one('select role, mfa_enabled_at from users where id = $1', [userId]);
+  let deviceId = trustedDeviceId;
+  if (u && isTeamRole(u.role) && u.mfa_enabled_at && !mfaDone) {
+    const ua = String(req.headers['user-agent'] || '');
+    const found = await findTrustedDevice(readCookie(req, mfaCookie(req, TRUST_COOKIE)), userId, ua);
+    if (found.suspicious) {
+      await logSecurity(req, 'security.mfa_device_mismatch', { userId, role: u.role });
+      const { notifyUser } = await import('./activity.js');
+      await notifyUser(userId, { kind: 'security.alert', category: 'account', title: 'Activité inhabituelle sur votre compte', body: 'Un appareil de confiance a été utilisé depuis un autre navigateur : il a été révoqué et le code Google Authenticator est redemandé.', link: '/espace?section=parametres' }).catch(() => {});
+    }
+    if (!found.device) {
+      const challenge = await createChallenge(userId, method);
+      appendCookie(res, cookie(req, mfaCookie(req, CHALLENGE_COOKIE), challenge, MFA.challengeMinutes * 60));
+      req.__user = undefined;
+      return { mfa_required: true };
+    }
+    deviceId = found.device.id;
+  }
   const token = newToken();
   await query(
-    `insert into sessions (token_hash, user_id, expires_at, user_agent, ip_hash, method)
-     values ($1, $2, now() + ($3 || ' days')::interval, $4, $5, $6) returning id`,
-    [sha256(token), userId, String(SESSION.maxDays), String(req.headers['user-agent'] || '').slice(0, 300) || null, ipHash(req), method],
+    `insert into sessions (token_hash, user_id, expires_at, user_agent, ip_hash, method, mfa_verified_at, trusted_device_id)
+     values ($1, $2, now() + ($3 || ' days')::interval, $4, $5, $6, $8::timestamptz, $7) returning id`,
+    [sha256(token), userId, String(SESSION.maxDays), String(req.headers['user-agent'] || '').slice(0, 300) || null, ipHash(req), method, deviceId,
+      mfaDone ? (verifiedAt === null ? new Date().toISOString() : verifiedAt || null) : null],
   );
   // Au plus 10 sessions par compte : les plus anciennes sont fermées.
   await query(
@@ -164,22 +193,27 @@ export async function createSession(req, res, userId, { method = 'password' } = 
   appendCookie(res, cookie(req, cookieName(req), token, SESSION.maxDays * 86400));
   // Réutilisation dans la même requête.
   req.__user = undefined;
+  return { mfa_required: false };
 }
 
 export async function destroySession(req, res) {
   const token = sessionToken(req);
   let userId = null;
   if (token) {
-    const row = await one('delete from sessions where token_hash = $1 or previous_token_hash = $1 returning user_id', [sha256(token)]);
+    const row = await one('delete from sessions where token_hash = $1 or previous_token_hash = $1 returning user_id, trusted_device_id', [sha256(token)]);
     userId = row?.user_id ?? null;
+    // Déconnexion volontaire : l'appareil n'est plus de confiance, le code sera redemandé.
+    if (row?.trusted_device_id) await query('update trusted_devices set revoked_at = now() where id = $1 and revoked_at is null returning id', [row.trusted_device_id]);
   }
+  appendCookie(res, cookie(req, mfaCookie(req, 'emp_trust'), '', 0));
   appendCookie(res, cookie(req, cookieName(req), '', 0));
   if (cookieName(req) !== COOKIE_DEV) appendCookie(res, cookie(req, COOKIE_DEV, '', 0));
   return userId;
 }
 
 const USER_COLS = `u.id, u.email, u.full_name, u.first_name, u.last_name, u.phone, u.role, u.permissions,
-  u.email_verified_at, u.disabled_at, u.avatar_file_id, (u.password_hash is not null) as has_password`;
+  u.email_verified_at, u.disabled_at, u.avatar_file_id, (u.password_hash is not null) as has_password,
+  u.public_name, u.job_title, u.bio, u.show_last_seen, (u.mfa_enabled_at is not null) as mfa_enabled`;
 
 /**
  * Utilisateur connecté, ou null. Vérifie l'expiration (30 jours), l'inactivité (14 jours),
@@ -191,7 +225,7 @@ export async function currentUser(req) {
   if (!token) return (req.__user = null);
   const hash = sha256(token);
   const row = await one(
-    `select ${USER_COLS}, s.id as session_id, (s.token_hash = $1) as is_current,
+    `select ${USER_COLS}, s.id as session_id, s.mfa_verified_at, s.trusted_device_id, (s.token_hash = $1) as is_current,
             (s.rotated_at < now() - ($2 || ' hours')::interval) as rotate_due,
             (s.last_seen_at < now() - interval '5 minutes') as touch_due
        from sessions s join users u on u.id = s.user_id
@@ -215,7 +249,25 @@ export async function currentUser(req) {
   } else if (touchDue) {
     await query('update sessions set last_seen_at = now() where id = $1 returning id', [user.session_id]);
   }
-  return (req.__user = user);
+  return (req.__user = await applyMfaPolicy(user));
+}
+
+/**
+ * Équipe sans double authentification alors qu'elle est obligatoire : le compte n'a AUCUN droit
+ * d'équipe (il est traité comme un client) tant que Google Authenticator n'est pas activé.
+ */
+async function applyMfaPolicy(user) {
+  if ((user.role === 'admin' || user.role === 'staff') && !user.mfa_enabled) {
+    const { mfaRequired } = await import('./mfa.js');
+    if (mfaRequired()) Object.assign(user, { real_role: user.role, role: 'client', permissions: [], mfa_setup_required: true });
+  }
+  return user;
+}
+
+/** Compte tel que les droits le voient (même règle que la session), pour répondre après une connexion. */
+export async function effectiveUser(userId) {
+  const u = await one(`select ${USER_COLS} from users u where u.id = $1`, [userId]);
+  return u && applyMfaPolicy(u);
 }
 
 export async function requireUser(req) {
@@ -267,6 +319,9 @@ export const publicUser = (u) =>
     permissions: u.role === 'admin' ? Object.keys(PERMISSIONS) : u.role === 'staff' ? u.permissions || [] : [],
     email_verified: Boolean(u.email_verified_at), has_password: u.has_password ?? Boolean(u.password_hash),
     avatar_file_id: u.avatar_file_id ?? null,
+    public_name: u.public_name ?? null, job_title: u.job_title ?? null, bio: u.bio ?? null, show_last_seen: u.show_last_seen ?? true,
+    mfa_enabled: Boolean(u.mfa_enabled ?? u.mfa_enabled_at), mfa_setup_required: Boolean(u.mfa_setup_required),
+    ...(u.real_role ? { real_role: u.real_role } : {}),
   };
 
 // --- Journal des évènements sensibles ---------------------------------------------------------

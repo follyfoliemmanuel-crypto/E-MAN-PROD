@@ -11,6 +11,7 @@
 // lisibles les anciens fichiers (S3, local) jusqu'à leur migration vérifiée.
 import { randomUUID } from 'node:crypto';
 import { query, one } from '../db.js';
+import { scanContent } from '../scan.js';
 import { HttpError } from '../http.js';
 import { logActivity, isTeam } from '../activity.js';
 import { providerFor, providerOf, logStorageError, storageStatus } from '../storage.js';
@@ -21,6 +22,14 @@ const startsWith = (buf, bytes) => bytes.every((b, i) => buf[i] === b);
 const ascii = (buf, offset, text) => buf.subarray(offset, offset + text.length).toString('latin1') === text;
 
 /** Formats acceptés : type MIME enregistré, extensions, types annoncés tolérés, signature du contenu. */
+/**
+ * Photos affichées sur le site (réalisations, photos du site, photos de profil) : réencodées par
+ * Cloudinary dès leur arrivée. Le fichier gardé est une copie propre : métadonnées (dont la
+ * position GPS) et données cachées disparaissent. Les pièces jointes des clients (impression)
+ * gardent leur original exact, mais passent par l'inspection de contenu (scan.js).
+ */
+const REENCODE = { portfolio: 'c_limit,w_4000,h_4000,q_90', site_media: 'c_limit,w_4000,h_4000,q_90', avatar: 'c_limit,w_1200,h_1200,q_90' };
+
 export const FORMATS = {
   jpg: { mime: 'image/jpeg', ext: ['jpg', 'jpeg'], aliases: ['image/jpeg', 'image/pjpeg'], check: (b) => startsWith(b, [0xff, 0xd8, 0xff]) },
   png: { mime: 'image/png', ext: ['png'], aliases: ['image/png'], check: (b) => startsWith(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]) },
@@ -37,6 +46,11 @@ export const FORMATS = {
   docx: { mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', ext: ['docx'], aliases: ['application/vnd.openxmlformats-officedocument.wordprocessingml.document'], check: (b) => startsWith(b, [0x50, 0x4b, 0x03, 0x04]) },
   xlsx: { mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ext: ['xlsx'], aliases: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'], check: (b) => startsWith(b, [0x50, 0x4b, 0x03, 0x04]) },
   pptx: { mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', ext: ['pptx'], aliases: ['application/vnd.openxmlformats-officedocument.presentationml.presentation'], check: (b) => startsWith(b, [0x50, 0x4b, 0x03, 0x04]) },
+  // Messages vocaux enregistrés dans le navigateur : WebM/Opus (Chrome, Firefox, Android), Ogg,
+  // MP4/AAC (Safari, iPhone). Toujours vérifiés sur leur contenu, jamais sur le nom.
+  webm: { mime: 'audio/webm', ext: ['webm', 'weba'], aliases: ['audio/webm', 'video/webm'], check: (b) => startsWith(b, [0x1a, 0x45, 0xdf, 0xa3]) },
+  ogg: { mime: 'audio/ogg', ext: ['ogg', 'oga', 'opus'], aliases: ['audio/ogg', 'audio/opus', 'application/ogg'], check: (b) => ascii(b, 0, 'OggS') },
+  m4a: { mime: 'audio/mp4', ext: ['m4a', 'mp4', 'aac'], aliases: ['audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac', 'video/mp4'], check: (b) => ascii(b, 4, 'ftyp') },
 };
 const ATTACHMENTS = ['jpg', 'png', 'webp', 'pdf', 'ai', 'eps', 'psd', 'cdr', 'zip'];
 const IMAGES = ['jpg', 'png', 'webp'];
@@ -45,7 +59,9 @@ const IMAGES = ['jpg', 'png', 'webp'];
 export const PURPOSES = {
   quote: { formats: ATTACHMENTS, maxBytes: 25 * MB, perTarget: 10, team: 'quotes', visibility: 'private' },
   order: { formats: ATTACHMENTS, maxBytes: 25 * MB, perTarget: 20, team: 'orders', visibility: 'private' },
-  message: { formats: ATTACHMENTS, maxBytes: 25 * MB, perTarget: 5, team: null, visibility: 'private' },
+  // Messagerie : pièces jointes, documents bureautiques et messages vocaux. Un fichier peut être
+  // envoyé AVANT le message (sans cible) : seul son auteur le voit jusqu'à l'envoi du message.
+  message: { formats: [...ATTACHMENTS, 'docx', 'xlsx', 'pptx', 'webm', 'ogg', 'm4a'], maxBytes: 25 * MB, perTarget: 5, team: null, visibility: 'private' },
   // Photos du site : 10 Mo (limite d'une image sur l'offre gratuite de Cloudinary) ; le
   // navigateur réduit avant l'envoi les photos plus lourdes, jusqu'à 50 Mo (src/lib/images.js).
   portfolio: { formats: IMAGES, maxBytes: 10 * MB, perTarget: 1, team: 'content', teamOnly: true, visibility: 'public' },
@@ -116,6 +132,7 @@ async function assertCanAttach(actor, purpose, targetId) {
   if (!actor?.id) throw new HttpError(401, 'Connectez-vous pour envoyer un fichier.');
   if (rules.teamOnly && !isTeam(actor, rules.team)) throw new HttpError(403, 'Accès réservé à l’équipe de l’atelier.');
   if (purpose === 'site_media' || purpose === 'avatar') return;
+  if (purpose === 'message' && !targetId) return; // rattaché au message au moment de l'envoi
   // Photo de réalisation : peut être envoyée avant la création de la fiche, puis rattachée.
   if (purpose === 'portfolio' && !targetId) return;
   if (!targetId) throw new HttpError(400, 'Indiquez à quoi rattacher le fichier.');
@@ -128,8 +145,9 @@ async function assertCanAttach(actor, purpose, targetId) {
     if (!o || (!isTeam(actor, 'orders') && o.user_id !== actor.id)) throw new HttpError(404, 'Commande introuvable.');
     if (['livree', 'annulee'].includes(o.status)) throw new HttpError(409, 'Cette commande est close : elle ne reçoit plus de fichiers.');
   } else if (purpose === 'message') {
-    const m = await one('select author_id, quote_id from messages where id = $1', [targetId]);
-    if (!m || (!isTeam(actor, m.quote_id ? 'quotes' : 'orders') && m.author_id !== actor.id)) throw new HttpError(404, 'Message introuvable.');
+    const m = await one('select author_id, quote_id, support_user_id from messages where id = $1', [targetId]);
+    const perm = m?.support_user_id ? 'support' : m?.quote_id ? 'quotes' : 'orders';
+    if (!m || (!isTeam(actor, perm) && m.author_id !== actor.id)) throw new HttpError(404, 'Message introuvable.');
   } else if (purpose === 'enrollment') {
     if (!(await one('select id from enrollments where id = $1', [targetId]))) throw new HttpError(404, 'Inscription introuvable.');
   } else if (purpose === 'session') {
@@ -166,7 +184,7 @@ export async function createUpload(actor, { purpose, target_id: targetId = null,
   // La clé de stockage ne reprend jamais le nom choisi par la personne.
   const ext = format.key === 'jpg' ? 'jpg' : format.ext;
   const key = `${prefix}${purpose}/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, '0')}/${id}.${ext}`;
-  const prepared = store.prepareUpload({ key, ext: format.key, contentType: format.mime, size, visibility: rules.visibility });
+  const prepared = store.prepareUpload({ key, ext: format.key, contentType: format.mime, size, visibility: rules.visibility, reencode: REENCODE[purpose] || null });
   await query(
     `insert into uploaded_files (id, owner_id, purpose, driver, storage_key, resource_type, remote_type, original_name, mime_type, size_bytes, visibility, ${column || 'quote_id'})
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning id`,
@@ -177,13 +195,15 @@ export async function createUpload(actor, { purpose, target_id: targetId = null,
 
 /** L'équipe qui gère la ressource à laquelle le fichier est rattaché. */
 async function teamOf(actor, f) {
-  if (f.purpose === 'avatar') return isTeam(actor, 'clients');
+  if (f.purpose === 'avatar') return isTeam(actor, 'clients') || isTeam(actor, 'support');
+  // Fichier de messagerie pas encore envoyé : visible de son auteur seulement.
+  if (f.purpose === 'message' && !f.message_id) return false;
   if (f.enrollment_id || f.session_id) return isTeam(actor, 'trainings');
   if (f.quote_id) return isTeam(actor, 'quotes');
   if (f.order_id) return isTeam(actor, 'orders');
   if (f.message_id) {
-    const m = await one('select quote_id from messages where id = $1', [f.message_id]);
-    return isTeam(actor, m?.quote_id ? 'quotes' : 'orders');
+    const m = await one('select quote_id, support_user_id from messages where id = $1', [f.message_id]);
+    return isTeam(actor, m?.support_user_id ? 'support' : m?.quote_id ? 'quotes' : 'orders');
   }
   return isTeam(actor, 'content');
 }
@@ -205,7 +225,10 @@ export async function confirmUpload(actor, id) {
   if (!stat) throw new HttpError(409, 'Le fichier n’a pas encore été reçu par le stockage. Réessayez l’envoi.');
   const ext = f.storage_key.split('.').pop();
   const key = Object.keys(FORMATS).find((k) => FORMATS[k].mime === f.mime_type && (f.resource_type === 'image' || FORMATS[k].ext.includes(ext)));
-  let problem = stat.size !== f.size_bytes ? 'la taille reçue ne correspond pas' : null;
+  // Photo réencodée à l'arrivée : la taille change forcément (elle reste sous la limite de l'usage).
+  const reencoded = store.kind === 'cloudinary' && f.resource_type === 'image' && REENCODE[f.purpose];
+  const max = maxBytesFor(f.purpose);
+  let problem = reencoded ? (stat.size > max ? 'il est trop volumineux' : null) : stat.size !== f.size_bytes ? 'la taille reçue ne correspond pas' : null;
   if (!problem && store.kind === 'cloudinary') {
     if (stat.resourceType !== f.resource_type || stat.type !== f.remote_type) problem = 'il n’a pas été enregistré comme prévu';
     // Image : Cloudinary l'a décodée, son vrai format doit être celui annoncé.
@@ -213,15 +236,27 @@ export async function confirmUpload(actor, id) {
   }
   // Fichier brut (et anciens stockages) : signature réelle des premiers octets.
   if (!problem && f.resource_type !== 'image' && !FORMATS[key]?.check(stat.head)) problem = `son contenu n’est pas un vrai fichier .${ext}`;
+  // Inspection du CONTENU complet (programme ou script caché, archive piégée, PDF actif…).
+  let threat = null;
+  if (!problem) {
+    const data = await guarded('scan', f, () => store.read({ ...f, remote_format: stat.format, remote_version: stat.version }));
+    if (!data) problem = 'il n’a pas pu être relu pour vérification';
+    else if ((threat = scanContent(data, key))) problem = threat;
+  }
   if (problem) {
     await store.remove(f).catch((err) => logStorageError('reject', f, err));
     await query(`update uploaded_files set status = 'rejected' where id = $1 returning id`, [id]);
-    await logActivity(actor, 'file.rejected', 'file', id, { reason: problem, name: f.original_name });
+    await logActivity(actor, 'file.rejected', 'file', id, { reason: problem, name: f.original_name, threat: Boolean(threat) });
+    if (threat) {
+      // Journal de sécurité (visible par l'administrateur) : qui, quel usage, quelle raison.
+      await logActivity(actor, 'security.upload_blocked', 'file', id, { reason: threat, purpose: f.purpose, name: String(f.original_name).slice(0, 120) });
+      throw new HttpError(422, `Fichier refusé : ${threat}. Pour votre sécurité et la nôtre, envoyez plutôt un PDF ou une image simple, ou contactez-nous sur WhatsApp.`);
+    }
     throw new HttpError(422, `Fichier refusé : ${problem}.`);
   }
   if (store.kind === 'cloudinary') {
-    await query('update uploaded_files set remote_version = $2, remote_format = $3, width = $4, height = $5 where id = $1 returning id',
-      [id, stat.version, f.resource_type === 'image' ? stat.format : null, stat.width, stat.height]);
+    await query('update uploaded_files set remote_version = $2, remote_format = $3, width = $4, height = $5, size_bytes = $6 where id = $1 returning id',
+      [id, stat.version, f.resource_type === 'image' ? stat.format : null, stat.width, stat.height, stat.size]);
   }
   const row = await one(`update uploaded_files f set status = 'ready', confirmed_at = now(), verified_at = now() where id = $1 returning ${FILE_COLS}`, [id]);
   const target = f.quote_id ? ['quote', f.quote_id] : f.order_id ? ['order', f.order_id] : ['file', id];
@@ -245,13 +280,16 @@ export async function canRead(actor, f) {
   if (f.enrollment_id) return Boolean(await one('select 1 from enrollments where id = $1 and user_id = $2', [f.enrollment_id, actor.id]));
   if (f.session_id) return Boolean(await one(`select 1 from enrollments where session_id = $1 and user_id = $2 and status in ('Inscrit', 'Terminé')`, [f.session_id, actor.id]));
   if (f.message_id) {
+    // Conversation privée : le client de la conversation ; devis et commande : leur client.
     return Boolean(await one(
       `select 1 from messages m
          left join quotes q on q.id = m.quote_id left join orders o on o.id = m.order_id
-        where m.id = $1 and coalesce(q.user_id, o.user_id) = $2`,
+        where m.id = $1 and coalesce(m.support_user_id, q.user_id, o.user_id) = $2`,
       [f.message_id, actor.id],
     ));
   }
+  // Photo de profil d'un membre de l'équipe : visible des clients dans la messagerie (profil public).
+  if (f.purpose === 'avatar') return Boolean(await one(`select 1 from users where avatar_file_id = $1 and role in ('admin', 'staff') and disabled_at is null`, [f.id]));
   return false;
 }
 
@@ -261,7 +299,7 @@ export async function downloadUrl(actor, id, { inline = false, direct = false } 
   if (!(await canRead(actor, f))) throw new HttpError(404, 'Fichier introuvable.');
   if (f.status !== 'ready') throw new HttpError(409, 'Ce fichier n’est pas encore disponible.');
   // Seules les images s'affichent dans le navigateur ; le reste est toujours téléchargé.
-  const show = inline && f.mime_type.startsWith('image/');
+  const show = inline && (f.mime_type.startsWith('image/') || f.mime_type.startsWith('audio/'));
   return guarded('download', f, async () => providerOf(f).downloadUrl(f, { filename: f.original_name, inline: show, direct, variant: f.purpose === 'avatar' ? 'avatar' : 'gallery' }));
 }
 
@@ -313,7 +351,10 @@ export async function filesOf(type, id) {
 
 /** Efface les envois jamais terminés (plus de 24 h). */
 export async function cleanupPending(actor) {
-  const rows = await query(`select f.id, f.purpose, f.visibility, f.mime_type, ${STORE_COLS} from uploaded_files f where f.status in ('pending','rejected') and f.created_at < now() - interval '24 hours'`);
+  // Aussi : fichiers de messagerie envoyés mais jamais rattachés à un message (envoi abandonné).
+  const rows = await query(`select f.id, f.purpose, f.visibility, f.mime_type, ${STORE_COLS} from uploaded_files f
+    where f.created_at < now() - interval '24 hours'
+      and (f.status in ('pending','rejected') or (f.purpose = 'message' and f.message_id is null))`);
   if (!rows.length) return { removed: 0, kept: 0 };
   let removed = 0;
   for (const r of rows) {

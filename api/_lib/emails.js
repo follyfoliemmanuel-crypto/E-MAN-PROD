@@ -138,6 +138,14 @@ export const TEMPLATES = {
     intro: 'Bonjour {prenom}, la facture {numero} est disponible dans votre espace, rubrique Mes documents.',
     cta: 'Voir mes documents',
   },
+  security_alert: {
+    label: 'Alerte de sécurité (nouvelle connexion)', category: 'account',
+    vars: ['prenom', 'appareil'],
+    subject: 'Nouvelle connexion à votre compte E-MAN PROD',
+    title: 'Nouvelle connexion à votre compte',
+    intro: 'Bonjour {prenom}, une connexion à votre compte vient d’avoir lieu depuis {appareil}. Si c’était vous, il n’y a rien à faire. Sinon, révoquez cet appareil et changez votre mot de passe tout de suite.',
+    cta: 'Vérifier mes appareils',
+  },
   team_alert: {
     label: 'Alerte pour l’équipe', category: 'team',
     vars: ['titre'],

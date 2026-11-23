@@ -166,6 +166,8 @@ export const MEDIA_SLOTS = [
   { slot: 'hero-2', group: 'Carrousel d’accueil', label: 'Diapositive 2 : impression textile', fallback: ph('textile'), alt: 'Impression textile' },
   { slot: 'hero-3', group: 'Carrousel d’accueil', label: 'Diapositive 3 : graphistes en studio', fallback: ph('studio'), alt: 'Graphistes en studio' },
   { slot: 'hero-4', group: 'Carrousel d’accueil', label: 'Diapositive 4 : formation en développement web', fallback: ph('dev-web'), alt: 'Formation en développement web' },
+  // Diapositives 5 à 10 : facultatives, visibles sur l'accueil seulement quand une photo est ajoutée.
+  ...[5, 6, 7, 8, 9, 10].map((n) => ({ slot: `hero-${n}`, group: 'Carrousel d’accueil', label: `Diapositive ${n} (facultative)`, optional: true, alt: 'Réalisation E-MAN PROD' })),
   { slot: 'training-band', group: 'Pages', label: 'Fond du bandeau « Centre de formation »', fallback: ph('atelier-info'), alt: 'Atelier informatique' },
   { slot: 'about-photo', group: 'Pages', label: 'Photo de la page « À propos »', fallback: ph('studio'), alt: 'L’équipe E-MAN PROD' },
   { slot: 'cars-hero', group: 'Pages', label: 'Photo d’en-tête E-MAN CARS', fallback: ph('cars'), alt: 'E-MAN CARS' },
@@ -176,7 +178,10 @@ export const HERO_SLIDES = [
   { slot: 'hero-2', theme: 'Impression textile' },
   { slot: 'hero-3', theme: 'Création graphique' },
   { slot: 'hero-4', theme: 'Formation professionnelle' },
+  // Facultatives : affichées seulement avec une photo ; leur légende est la description saisie dans l'admin.
+  ...[5, 6, 7, 8, 9, 10].map((n) => ({ slot: `hero-${n}`, theme: 'E-MAN PROD', optional: true })),
 ];
+export const HERO_MAX_SLIDES = HERO_SLIDES.length;
 
 export const GALLERY_CATEGORIES = [
   { slug: 'infographie', label: 'Infographie' },

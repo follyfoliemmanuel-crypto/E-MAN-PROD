@@ -28,7 +28,10 @@ import * as s from './_lib/schemas.js';
 import * as clients from './_lib/services/clients.js';
 import { submitTestimonial } from './_lib/services/content.js';
 import * as pushSubs from './_lib/services/pushSubs.js';
-import { rateLimit } from './_lib/auth.js';
+import { rateLimit, logSecurity } from './_lib/auth.js';
+import { query, one } from './_lib/db.js';
+import { notifyUser } from './_lib/activity.js';
+import { assertRecentMfa, revokeDevices } from './_lib/mfa.js';
 
 const b64url = (min, max) => z.string().min(min).max(max).regex(/^[A-Za-z0-9_-]+=*$/, 'Clé invalide.');
 const pushSchema = z.object({
@@ -49,6 +52,11 @@ const patchSchema = z.object({
   whatsapp: s.phone('WhatsApp', { req: false }),
   preferred_contact: s.optionalOneOf(['whatsapp', 'appel', 'email'], 'Moyen de contact'),
   // Choix des e-mails reçus : { quotes: false, … } (absent = activé).
+  // Profil visible dans la messagerie. Nom public, fonction et présentation : équipe seulement.
+  public_name: s.text('Nom public', { max: 80 }),
+  job_title: s.text('Fonction', { max: 80 }),
+  bio: s.text('Présentation', { max: 600 }),
+  show_last_seen: z.boolean({ invalid_type_error: 'Dernière activité : oui ou non.' }).optional(),
   email_prefs: z.record(z.enum(Object.keys(USER_EMAIL_CATEGORIES)), z.boolean(), { invalid_type_error: 'Préférences invalides.' }).optional(),
 });
 
@@ -156,6 +164,7 @@ export default handler({
     }
     if (body.action === 'invite') {
       const admin = await requireAdmin(req);
+      assertRecentMfa(admin);
       const p = s.parse(z.object({
         first_name: s.text('Prénom', { min: 1, max: 60, req: true }),
         last_name: s.text('Nom', { min: 1, max: 60, req: true }),
@@ -164,8 +173,26 @@ export default handler({
       }), body);
       return send(res, 201, await security.inviteStaff(req, admin, p));
     }
+    if (body.action === 'mfa_reset') {
+      // Téléphone perdu SANS code de récupération : un AUTRE administrateur, lui-même reconfirmé,
+      // réinitialise la double authentification. Jamais sur simple demande non vérifiée.
+      const admin = await requireAdmin(req);
+      assertRecentMfa(admin);
+      const { user_id: id } = s.parse(z.object({ user_id: s.uuid('Compte') }), body);
+      if (id === admin.id) return send(res, 409, { error: 'Vous ne pouvez pas réinitialiser votre propre double authentification : utilisez un code de récupération.' });
+      const target = await one(`select id, role from users where id = $1 and role in ('admin', 'staff')`, [id]);
+      if (!target) return send(res, 404, { error: 'Compte de l’équipe introuvable.' });
+      await query('update users set mfa_secret_enc = null, mfa_pending_enc = null, mfa_enabled_at = null, mfa_last_step = null where id = $1 returning id', [id]);
+      await query('delete from mfa_recovery_codes where user_id = $1 returning id', [id]);
+      await revokeDevices(id);
+      await query('delete from sessions where user_id = $1 returning id', [id]);
+      await logSecurity(req, 'auth.mfa_reset_by_admin', { userId: admin.id, role: 'admin', data: { target: id } });
+      await notifyUser(id, { kind: 'security.alert', category: 'account', title: 'Double authentification réinitialisée', body: 'Un administrateur a réinitialisé votre Google Authenticator. Reconnectez-vous et activez-le de nouveau.', link: '/espace?section=parametres' }).catch(() => {});
+      return send(res, 200, { ok: true });
+    }
     if (body.action === 'role' || body.action === 'disable' || body.action === 'revoke_sessions') {
       const admin = await requireAdmin(req);
+      assertRecentMfa(admin);
       if (body.action === 'role') {
         const p = s.parse(z.object({
           user_id: s.uuid('Compte'),

@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   MessageCircle, Search, Plus, LayoutDashboard, FileText, Package, GraduationCap, FolderOpen, Bell, LifeBuoy, UserRound, ShieldCheck,
-  Users, ClipboardList, Images, Layers, Image as ImageIcon, PenLine, UserCog, LogOut, Menu, Megaphone, Settings2,
+  Users, ClipboardList, Images, Layers, Image as ImageIcon, PenLine, UserCog, LogOut, Menu, Megaphone, Settings2, MessagesSquare, ListChecks,
 } from 'lucide-react';
+import { ClientMessaging, ChatInbox } from './space/chat.jsx';
+import { MfaPanel, MfaGate } from './space/mfa.jsx';
+import { RequestTimeline, PublicProfileForm, PresencePrivacy } from './space/extras.jsx';
+import { NotifyInvite } from './space/push.jsx';
+import { onChat } from '../lib/live.js';
 import { MEDIA_SLOTS, PLACEHOLDERS } from '../config.js';
 import { useCatalog } from '../lib/catalog.jsx';
 import { Avatar } from '../components/Avatar.jsx';
@@ -28,19 +33,31 @@ const waLink = (phone, text) => `https://wa.me/${String(phone || '').replace(/\D
 
 // Sections de l'espace, selon le rôle et les droits. L'affichage ne donne aucun droit :
 // chaque donnée est demandée au serveur, qui vérifie le droit à chaque requête.
+// v4 : rubriques du cahier des charges en premier ; rien n'est retiré (formations, documents,
+// outils du site restent accessibles, regroupés sous « Gestion du site » pour l'équipe).
 const CLIENT_SECTIONS = [
-  ['accueil', 'Accueil', LayoutDashboard], ['devis', 'Mes devis', FileText], ['commandes', 'Mes commandes', Package],
-  ['formations', 'Mes formations', GraduationCap], ['documents', 'Mes documents', FolderOpen], ['notifications', 'Notifications', Bell],
-  ['assistance', 'Assistance', LifeBuoy], ['profil', 'Mon profil', UserRound], ['securite', 'Sécurité', ShieldCheck],
+  ['accueil', 'Tableau de bord', LayoutDashboard], ['messagerie', 'Messagerie', MessagesSquare], ['devis', 'Mes devis', FileText],
+  ['commandes', 'Mes commandes', Package], ['suivi', 'Suivi des demandes', ListChecks], ['formations', 'Mes formations', GraduationCap],
+  ['documents', 'Mes documents', FolderOpen], ['notifications', 'Notifications', Bell], ['profil', 'Mon profil', UserRound],
+  ['parametres', 'Paramètres', Settings2],
 ];
 const TEAM_SECTIONS = [
-  ['tableau', 'Tableau de bord', LayoutDashboard, null], ['clients', 'Clients', Users, 'clients'], ['devis', 'Devis', FileText, 'quotes'],
-  ['commandes', 'Commandes', Package, 'orders'], ['inscriptions', 'Inscriptions', ClipboardList, 'trainings'], ['formations', 'Formations', GraduationCap, 'trainings'],
-  ['realisations', 'Réalisations', Images, 'content'], ['prestations', 'Prestations', Layers, 'content'], ['images', 'Images et bannières', ImageIcon, 'content'],
-  ['contenu', 'Textes du site', PenLine, 'content'], ['assistance', 'Assistance', LifeBuoy, 'support'], ['annonces', 'Annonces', Megaphone, 'admin'],
-  ['equipe', 'Équipe', UserCog, 'admin'], ['parametres', 'Paramètres', Settings2, 'admin'],
-  ['notifications', 'Notifications', Bell, null], ['profil', 'Mon profil', UserRound, null], ['securite', 'Sécurité', ShieldCheck, null],
+  ['tableau', 'Tableau de bord', LayoutDashboard, null], ['clients', 'Gestion des clients', Users, 'clients'], ['messagerie', 'Messagerie', MessagesSquare, 'support'],
+  ['devis', 'Gestion des devis', FileText, 'quotes'], ['commandes', 'Gestion des commandes', Package, 'orders'], ['notifications', 'Notifications', Bell, null],
+  ['profil', 'Profil administrateur', UserRound, null], ['parametres', 'Paramètres', ShieldCheck, null],
+  ['inscriptions', 'Inscriptions', ClipboardList, 'trainings', 'Gestion du site'], ['formations', 'Formations', GraduationCap, 'trainings', 'Gestion du site'],
+  ['realisations', 'Réalisations', Images, 'content', 'Gestion du site'], ['prestations', 'Prestations', Layers, 'content', 'Gestion du site'],
+  ['images', 'Images et bannières', ImageIcon, 'content', 'Gestion du site'], ['contenu', 'Textes du site', PenLine, 'content', 'Gestion du site'],
+  ['annonces', 'Annonces', Megaphone, 'admin', 'Gestion du site'], ['equipe', 'Équipe', UserCog, 'admin', 'Gestion du site'],
+  ['site', 'Paramètres du site', Settings2, 'admin', 'Gestion du site'],
 ];
+/** Anciennes adresses (liens d'e-mails, favoris) → nouvelles rubriques. */
+function alias(section, params = {}) {
+  if (section === 'assistance') return 'messagerie';
+  if (section === 'securite') return 'parametres';
+  if (section === 'parametres' && params.onglet) return 'site';
+  return section;
+}
 
 function readLocation() {
   const p = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
@@ -50,7 +67,7 @@ function readLocation() {
   if (params.commande) return { section: 'commandes', params: { id: params.commande } };
   if (params.onglet === 'inscriptions') return { section: 'inscriptions', params: {} };
   const { section, ...rest } = params;
-  return { section: section || null, params: rest };
+  return { section: section ? alias(section, rest) : null, params: rest };
 }
 
 export default function Dashboard() {
@@ -62,10 +79,17 @@ export default function Dashboard() {
   const isClient = !user || user.role === 'client';
   const isAdmin = user?.role === 'admin';
   const can = (p) => isAdmin || (user?.role === 'staff' && (user.permissions || []).includes(p));
-  const sections = isClient ? CLIENT_SECTIONS : TEAM_SECTIONS.filter(([, , , perm]) => !perm || (perm === 'admin' ? isAdmin : can(perm)));
+  const sections = isClient ? CLIENT_SECTIONS : TEAM_SECTIONS.filter(([, , , perm]) => !perm || (perm === 'admin' ? isAdmin : can(perm)))
+    // « Profil administrateur » pour l'administrateur ; un collaborateur voit « Mon profil ».
+    .map((s) => (s[0] === 'profil' && !isAdmin ? ['profil', 'Mon profil', ...s.slice(2)] : s));
   const current = sections.find(([k]) => k === loc.section)?.[0] || sections[0][0];
+  // Messages non lus (menu « Messagerie »), tenus à jour en temps réel.
+  const [chatUnread, setChatUnread] = useState(0);
+  const refreshChat = useCallback(() => { if (!user || DEMO) return; import('../lib/api.js').then(({ chatApi }) => chatApi.unread()).then((r) => setChatUnread(r.unread)).catch(() => {}); }, [user?.id]);
+  useEffect(() => { refreshChat(); return onChat((e) => { if (e.type === 'chat' || e.type === 'resync') refreshChat(); }); }, [refreshChat]);
 
-  const go = useCallback((section, params = {}) => {
+  const go = useCallback((rawSection, params = {}) => {
+    const section = alias(rawSection, params);
     setLoc({ section, params });
     setMenuOpen(false);
     const q = new URLSearchParams({ section, ...params }).toString();
@@ -107,13 +131,17 @@ export default function Dashboard() {
           </div>
           <nav>
             <ul>
-              {sections.map(([key, text, Icon]) => (
-                <li key={key}>
-                  <button type="button" className={current === key ? 'active' : ''} aria-current={current === key ? 'page' : undefined} onClick={() => go(key)}>
-                    <Icon size={18} aria-hidden="true" /><span>{text}</span>
-                    {key === 'notifications' && unread > 0 && <span className="badgeCount" aria-label={`${unread} non lues`}>{unread}</span>}
-                  </button>
-                </li>
+              {sections.map(([key, text, Icon, , group], i) => (
+                <React.Fragment key={key}>
+                  {group && sections[i - 1]?.[4] !== group && <li className="navGroup" role="presentation">{group}</li>}
+                  <li>
+                    <button type="button" className={current === key ? 'active' : ''} aria-current={current === key ? 'page' : undefined} onClick={() => go(key)}>
+                      <Icon size={18} aria-hidden="true" /><span>{text}</span>
+                      {key === 'notifications' && unread > 0 && <span className="badgeCount" aria-label={`${unread} non lues`}>{unread}</span>}
+                      {key === 'messagerie' && chatUnread > 0 && <span className="badgeCount" aria-label={`${chatUnread} message${chatUnread > 1 ? 's' : ''} non lu${chatUnread > 1 ? 's' : ''}`}>{chatUnread}</span>}
+                    </button>
+                  </li>
+                </React.Fragment>
               ))}
             </ul>
           </nav>
@@ -127,15 +155,20 @@ export default function Dashboard() {
             </button>
           </div>
           {!DEMO && !user.email_verified && <VerifyBanner notify={notify} />}
-          <Section key={current + JSON.stringify(loc.params)} section={current} params={loc.params} user={user} setUser={setUser} notify={notify}
-            go={go} can={can} isAdmin={isAdmin} isClient={isClient} unread={unread} refreshUnread={refreshUnread} />
+          {user.mfa_setup_required ? <MfaGate user={user} notify={notify} setUser={setUser} /> : (
+            <>
+              <NotifyInvite notify={notify} team={!isClient} />
+              <Section key={current + JSON.stringify(loc.params)} section={current} params={loc.params} user={user} setUser={setUser} notify={notify}
+                go={go} can={can} isAdmin={isAdmin} isClient={isClient} unread={unread} refreshUnread={refreshUnread} refreshChat={refreshChat} />
+            </>
+          )}
         </div>
       </main>
     </ConfirmProvider>
   );
 }
 
-function Section({ section, params, user, setUser, notify, go, can, isAdmin, isClient, unread, refreshUnread }) {
+function Section({ section, params, user, setUser, notify, go, can, isAdmin, isClient, unread, refreshUnread, refreshChat }) {
   const [creating, setCreating] = useState(Boolean(params.nouveau));
   switch (section) {
     case 'accueil': return <ClientHome user={user} go={go} unread={unread} />;
@@ -169,22 +202,42 @@ function Section({ section, params, user, setUser, notify, go, can, isAdmin, isC
     case 'inscriptions': return <Registrations notify={notify} />;
     case 'documents': return <MyDocuments />;
     case 'notifications': return <><NotificationsSection go={go} onRead={refreshUnread} /><PushSettings notify={notify} team={!isClient} /></>;
+    case 'messagerie':
+      return (
+        <>
+          <SectionHead title="Messagerie" lead={isClient ? 'Votre conversation privée avec l’équipe E-MAN PROD : messages, photos, documents et messages vocaux.' : 'Les conversations privées avec vos clients, les plus récentes en premier.'} />
+          {isClient ? <ClientMessaging user={user} notify={notify} onChanged={() => { refreshChat(); refreshUnread(); }} />
+            : <ChatInbox user={user} notify={notify} params={params} go={go} onChanged={() => { refreshChat(); refreshUnread(); }} />}
+        </>
+      );
     case 'assistance': return isClient ? <SupportSection notify={notify} /> : <SupportInbox notify={notify} params={params} />;
+    case 'suivi': return <RequestTimeline go={go} />;
     case 'clients': return <ClientsAdmin notify={notify} isAdmin={isAdmin} />;
     case 'realisations': return <><SectionHead title="Réalisations" lead="Photos de vos travaux, catégories, publication." /><GalleryAdmin notify={notify} /></>;
     case 'prestations': return <><SectionHead title="Prestations" lead="Textes des pages prestations et visibilité sur le site." /><PrestationsAdmin notify={notify} /></>;
     case 'images': return <><SectionHead title="Images et bannières" lead="Photos du carrousel d’accueil, des pages, des prestations et des formations." /><MediaAdmin notify={notify} /></>;
     case 'contenu': return <ContentAdmin notify={notify} isAdmin={isAdmin} />;
     case 'equipe': return <TeamSection notify={notify} me={user} />;
-    case 'parametres': return <SettingsAdmin notify={notify} params={params} go={go} />;
+    case 'site': return <SettingsAdmin notify={notify} params={params} go={go} />;
+    case 'parametres':
+      return (
+        <>
+          <SectionHead title="Paramètres" lead={isClient ? 'Sécurité de votre compte, notifications et confidentialité.' : 'Google Authenticator, appareils de confiance, sessions, notifications et confidentialité.'} />
+          {!isClient && <MfaPanel notify={notify} onUserChange={(u) => u && setUser(u)} />}
+          <SecurityPanel notify={notify} />
+          <PushSettings notify={notify} team={!isClient} />
+          <PresencePrivacy user={user} notify={notify} setUser={setUser} />
+          {isClient && <EmailPrefs notify={notify} />}
+        </>
+      );
     case 'annonces': return <AnnouncementsAdmin notify={notify} />;
     case 'profil':
       return (
         <>
-          <SectionHead title="Mon profil" lead="Vos informations et vos coordonnées." />
+          <SectionHead title={isAdmin ? 'Profil administrateur' : 'Mon profil'} lead={isClient ? 'Votre photo, vos informations et vos coordonnées (visibles de l’équipe E-MAN PROD).' : 'Votre photo et ce que les clients voient de vous dans la messagerie.'} />
           <section className="spaceBlock"><AvatarEditor user={user} notify={notify} onChange={(id) => setUser({ ...user, avatar_file_id: id })} /></section>
+          {!isClient && <PublicProfileForm user={user} notify={notify} setUser={setUser} />}
           <section className="spaceBlock"><ProfilePanel notify={notify} /></section>
-          {isClient && <EmailPrefs notify={notify} />}
           {isClient && <section className="spaceBlock"><TestimonialForm notify={notify} /></section>}
         </>
       );
@@ -442,7 +495,7 @@ function MediaRow({ def, current, onSaved, notify }) {
     setBusy(true);
     try {
       await resetMedia(def.slot);
-      notify(`Visuel provisoire rétabli : ${def.label}.`);
+      notify(def.optional ? `Photo retirée : ${def.label} n’apparaît plus sur l’accueil.` : `Visuel provisoire rétabli : ${def.label}.`);
       onSaved();
     } catch (err) {
       notify(err.message, 'error');
@@ -453,11 +506,13 @@ function MediaRow({ def, current, onSaved, notify }) {
 
   return (
     <li className="mediaRow">
-      <SmartImage slot={def.slot} fallback={def.fallback} className="mediaThumb" />
+      {custom || !def.optional
+        ? <SmartImage slot={def.slot} fallback={def.fallback} className="mediaThumb" />
+        : <span className="mediaThumb mediaEmpty">Aucune photo : cette diapositive n’apparaît pas sur l’accueil.</span>}
       <form className="mediaForm" onSubmit={save}>
         <div className="mediaHead">
           <strong>{def.label}</strong>
-          <span className={'tag ' + (custom ? 'done' : 'new')}>{custom ? 'Photo personnalisée' : 'Visuel provisoire'}</span>
+          <span className={'tag ' + (custom ? 'done' : 'new')}>{custom ? 'Photo personnalisée' : def.optional ? 'Vide (masquée)' : 'Visuel provisoire'}</span>
         </div>
         <label className="field"><span className="fieldLabel">Envoyer une photo</span>
           <input type="file" accept=".jpg,.jpeg,.png,.webp" disabled={busy} onChange={sendPhoto} />
@@ -466,7 +521,7 @@ function MediaRow({ def, current, onSaved, notify }) {
           <input required value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://… ou /media/photo.jpg" inputMode="url" />
         </label>
         <div className="fieldRow">
-          <label className="field"><span className="fieldLabel">Description (pour l’accessibilité)</span>
+          <label className="field"><span className="fieldLabel">{def.optional ? 'Description (aussi la légende sur l’accueil)' : 'Description (pour l’accessibilité)'}</span>
             <input required minLength={3} maxLength={200} value={alt} onChange={(e) => setAlt(e.target.value)} placeholder={def.alt} />
           </label>
           <label className="field"><span className="fieldLabel">Crédit ou source (facultatif)</span>
@@ -475,7 +530,7 @@ function MediaRow({ def, current, onSaved, notify }) {
         </div>
         <div className="mediaActions">
           <button className="btn btnPrimary btnSmall" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer l’adresse'}</button>
-          {custom && <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={reset}>Revenir au visuel provisoire</button>}
+          {custom && <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={reset}>{def.optional ? 'Retirer la photo' : 'Revenir au visuel provisoire'}</button>}
         </div>
       </form>
     </li>

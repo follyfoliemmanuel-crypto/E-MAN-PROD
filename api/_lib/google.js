@@ -210,7 +210,12 @@ export async function googleCallback(req, res, { onLogin } = {}) {
   } catch (err) {
     return fail(err.message, { email: maskEmail(profile.email) });
   }
-  await createSession(req, res, result.userId, { method: 'google' });
+  if ((await createSession(req, res, result.userId, { method: 'google' })).mfa_required) {
+    // Compte de l'équipe, appareil non reconnu : le code Google Authenticator est demandé.
+    await logSecurity(req, 'auth.mfa_challenge', { userId: result.userId, data: { method: 'google' } });
+    appendCookie(res, cookie(req, STATE_COOKIE, '', 0, { path: '/api/auth' }));
+    return redirect(res, saved.return_to + (saved.return_to.includes('?') ? '&' : '?') + 'mfa=1');
+  }
   await query('update users set last_login_at = now() where id = $1 returning id', [result.userId]);
   await logSecurity(req, 'auth.login', { userId: result.userId, data: { method: 'google', created: result.created, linked: result.linked } });
   if (onLogin) await onLogin(result.userId);

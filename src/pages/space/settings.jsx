@@ -35,7 +35,7 @@ export function SettingsAdmin({ notify, params = {}, go }) {
       <SectionHead title="Paramètres" lead="Coordonnées, numéros WhatsApp, mentions légales, documents, e-mails, connexion Google, fichiers et sauvegardes. Les changements s’appliquent au site et aux PDF dès l’enregistrement." />
       <div className="tabBar" role="tablist" aria-label="Rubriques des paramètres">
         {TABS.map(([k, label]) => (
-          <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => go('parametres', { onglet: k })}>{label}</button>
+          <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => go('site', { onglet: k })}>{label}</button>
         ))}
       </div>
       {loading && !data ? <Loading /> : error ? <ErrorBox error={error} onRetry={reload} /> : (

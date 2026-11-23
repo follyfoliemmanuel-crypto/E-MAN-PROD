@@ -53,13 +53,15 @@ export async function setDisabled(req, admin, userId, disabled) {
     [userId, disabled],
   );
   if (!row) throw new HttpError(404, 'Compte introuvable.');
-  if (disabled) await query('delete from sessions where user_id = $1 returning id', [userId]);
+  if (disabled) { await query('delete from sessions where user_id = $1 returning id', [userId]); await query('update trusted_devices set revoked_at = now() where user_id = $1 and revoked_at is null returning id', [userId]); }
   await logSecurity(req, disabled ? 'auth.account_disabled' : 'auth.account_enabled', { userId: admin.id, role: 'admin', data: { target: userId, email: row.email } });
   return { ok: true };
 }
 
 export async function revokeUserSessions(req, admin, userId) {
   const rows = await query('delete from sessions where user_id = $1 returning id', [userId]);
+  // Sessions fermées par l'administrateur : plus aucun appareil de confiance pour ce compte.
+  await query('update trusted_devices set revoked_at = now() where user_id = $1 and revoked_at is null returning id', [userId]);
   await logSecurity(req, 'auth.sessions_revoked_all', { userId: admin.id, role: 'admin', data: { target: userId, count: rows.length } });
   return { revoked: rows.length };
 }
@@ -94,9 +96,12 @@ export async function mySessions(req, user) {
 export async function revokeMine(req, user, { id = null, others = false }) {
   const hash = currentHash(req);
   const rows = others
-    ? await query('delete from sessions where user_id = $1 and token_hash <> $2 and coalesce(previous_token_hash, \'\') <> $2 returning id', [user.id, hash])
-    : await query('delete from sessions where user_id = $1 and id = $2 returning id', [user.id, id]);
+    ? await query('delete from sessions where user_id = $1 and token_hash <> $2 and coalesce(previous_token_hash, \'\') <> $2 returning id, trusted_device_id', [user.id, hash])
+    : await query('delete from sessions where user_id = $1 and id = $2 returning id, trusted_device_id', [user.id, id]);
   if (!others && !rows.length) throw new HttpError(404, 'Session introuvable.');
+  // Session fermée : l'appareil qui l'avait ouverte n'est plus de confiance (code redemandé).
+  const devices = rows.map((r) => r.trusted_device_id).filter(Boolean);
+  if (devices.length) await query('update trusted_devices set revoked_at = now() where id = any($1::uuid[]) and revoked_at is null returning id', [`{${devices.join(',')}}`]);
   await logSecurity(req, others ? 'auth.sessions_revoked_others' : 'auth.session_revoked', { userId: user.id, role: user.role, data: { count: rows.length } });
   return { revoked: rows.length };
 }

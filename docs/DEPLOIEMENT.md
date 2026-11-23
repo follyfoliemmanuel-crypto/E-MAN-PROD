@@ -104,3 +104,15 @@ Puis supprimer le compte de test : Espace → Clients → fiche → Désactiver.
 ## 9. Autres plateformes
 
 Le code suppose des fonctions serverless Node au format Vercel (`api/*.js`, `export default (req, res)`). Netlify ou un serveur Node classique demanderaient un petit adaptateur (le serveur de développement local en est un exemple) ; Vercel reste la cible testée et documentée.
+
+## Passage à la v4.0 (messagerie, Google Authenticator)
+
+1. **Base** : `npm run db:migrate` (migration 012, additive), ou exécuter `db/install-neon.sql` dans Neon.
+   Avec le compte limité (`npm run db:app-role`), les nouvelles tables sont accessibles automatiquement.
+2. **Déployer** sur Vercel. Aucune variable n'est obligatoire (voir docs/DOUBLE-AUTHENTIFICATION.md
+   pour MFA_REQUIRED, MFA_TRUST_DAYS, MFA_ENCRYPTION_KEY).
+3. **Première connexion de l'administrateur** : l'espace demande d'activer Google Authenticator.
+   Gardez le téléphone à portée de main et rangez les 10 codes de récupération.
+4. **À vérifier sur vos propres appareils** (impossible à tester ici) : scanner le QR code avec votre
+   téléphone ; recevoir une notification Push sur le téléphone ; enregistrer un message vocal sur
+   iPhone (Safari) et sur Android (Chrome).

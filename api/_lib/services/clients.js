@@ -25,6 +25,18 @@ export async function updateAccount(actor, patch) {
     uParams.push(patch[k]);
     uSets.push(`${col} = $${uParams.length}`);
   }
+  // Profil public (messagerie) : nom public, fonction, présentation réservés à l'équipe ;
+  // « dernière activité visible » pour tout le monde.
+  const team = actor.role === 'admin' || actor.role === 'staff';
+  for (const k of ['public_name', 'job_title', 'bio']) {
+    if (!(k in patch)) continue;
+    if (!team) throw new HttpError(403, 'Ce champ est réservé à l’équipe.');
+    const val = patch[k] ? String(patch[k]).trim() : null;
+    if (val && k !== 'bio' && val.length < 2) throw new HttpError(400, 'Au moins 2 caractères.');
+    uParams.push(val || null);
+    uSets.push(`${k} = $${uParams.length}`);
+  }
+  if ('show_last_seen' in patch && typeof patch.show_last_seen === 'boolean') { uParams.push(patch.show_last_seen); uSets.push(`show_last_seen = $${uParams.length}`); }
   if (uSets.length) await query(`update users set ${uSets.join(', ')} where id = $1 returning id`, uParams);
   // Prénom ou nom modifié : le nom affiché suit.
   if ('first_name' in patch || 'last_name' in patch) {
@@ -50,7 +62,7 @@ export async function emailPrefs(userId) {
 }
 
 export async function getAccount(actor) {
-  const user = await one('select id, email, full_name, first_name, last_name, phone, role, email_verified_at, created_at, last_login_at, avatar_file_id from users where id = $1', [actor.id]);
+  const user = await one('select id, email, full_name, first_name, last_name, phone, role, email_verified_at, created_at, last_login_at, avatar_file_id, public_name, job_title, bio, show_last_seen from users where id = $1', [actor.id]);
   return { user: { ...user, email_verified: Boolean(user.email_verified_at) }, profile: await getProfile(actor.id) };
 }
 

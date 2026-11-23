@@ -173,7 +173,7 @@ function AccountMenu() {
           <li><button type="button" onClick={() => goTo(null)}><LayoutDashboard size={18} aria-hidden="true" />{isTeam ? 'Tableau de bord' : 'Mon espace'}</button></li>
           <li><button type="button" onClick={() => goTo('notifications')}><Bell size={18} aria-hidden="true" />Notifications{unread > 0 && <span className="badgeCount">{unread}</span>}</button></li>
           <li><button type="button" onClick={() => goTo('profil')}><UserRound size={18} aria-hidden="true" />Mon profil</button></li>
-          <li><button type="button" onClick={() => goTo('securite')}><ShieldCheck size={18} aria-hidden="true" />Sécurité</button></li>
+          <li><button type="button" onClick={() => goTo('parametres')}><ShieldCheck size={18} aria-hidden="true" />Paramètres et sécurité</button></li>
         </ul>
         <button type="button" className="accountLogout" onClick={() => { setOpen(false); logout(); }}><LogOut size={18} aria-hidden="true" />Se déconnecter</button>
       </div>

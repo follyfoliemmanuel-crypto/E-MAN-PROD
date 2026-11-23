@@ -42,7 +42,7 @@ export function ClientHome({ user, go, unread }) {
           <div className="quickActions">
             <button type="button" className="btn btnPrimary" onClick={() => go('devis', { nouveau: 1 })}><Plus size={18} aria-hidden="true" /> Demander un devis</button>
             <button type="button" className="btn btnGhost" onClick={() => go('formations', { inscrire: 1 })}>S’inscrire à une formation</button>
-            <button type="button" className="btn btnGhost" onClick={() => go('assistance')}>Contacter l’assistance</button>
+            <button type="button" className="btn btnGhost" onClick={() => go('messagerie')}>Écrire à l’équipe</button>
           </div>
           {data.quotes.some((q) => q.status === 'envoye') && (
             <div className="notice">

@@ -7,7 +7,16 @@ import { useEffect } from 'react';
 import { DEMO } from './api.js';
 
 export const LIVE_EVENT = 'eman:live';
+// Messagerie : conversations qui ont bougé, « écrit un message… », présence.
+export const CHAT_EVENT = 'eman:chat';
 const HIDDEN_GRACE_MS = 30000;
+/** Dernier état connu (pour un écran ouvert après l'évènement). */
+export const chatState = { typing: [], online: new Set(), teamOnline: false, presenceKnown: false };
+const chatEmit = (detail) => window.dispatchEvent(new CustomEvent(CHAT_EVENT, { detail }));
+/** Identifiant de cette connexion (un onglet) : la présence compte chaque appareil séparément. */
+const CONN_ID = (() => {
+  try { return crypto.randomUUID().replace(/-/g, '').slice(0, 24); } catch { return `c${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`; }
+})();
 
 export function startLive({ onUnread, onNotification, onFallbackPoll }) {
   if (DEMO || typeof window === 'undefined') return () => {};
@@ -16,7 +25,7 @@ export function startLive({ onUnread, onNotification, onFallbackPoll }) {
   const seen = new Set();
   // Après une coupure ou un retour sur l'onglet : tout ce qui est affiché se relit une fois
   // (un rechargement a pu échouer pendant la coupure, et ce qui est déjà vu n'est pas renvoyé).
-  const resync = () => window.dispatchEvent(new CustomEvent(LIVE_EVENT, { detail: { kind: 'resync' } }));
+  const resync = () => { window.dispatchEvent(new CustomEvent(LIVE_EVENT, { detail: { kind: 'resync' } })); chatEmit({ type: 'resync' }); };
 
   const startPolling = () => { if (!pollTimer) pollTimer = setInterval(() => { if (document.visibilityState === 'visible') onFallbackPoll?.(); }, 20000); };
   const stopPolling = () => { clearInterval(pollTimer); pollTimer = null; };
@@ -24,7 +33,7 @@ export function startLive({ onUnread, onNotification, onFallbackPoll }) {
   function open() {
     if (stopped || es || document.visibilityState !== 'visible') return;
     if (typeof EventSource === 'undefined') { startPolling(); return; }
-    const url = `/api/inbox?stream=1${lastId ? `&since=${encodeURIComponent(lastId)}` : ''}`;
+    const url = `/api/inbox?stream=1&conn=${CONN_ID}${lastId ? `&since=${encodeURIComponent(lastId)}` : ''}`;
     es = new EventSource(url, { withCredentials: true });
     es.addEventListener('hello', (e) => {
       failures = 0; stopPolling();
@@ -43,6 +52,18 @@ export function startLive({ onUnread, onNotification, onFallbackPoll }) {
       onUnread?.(n.unread);
       onNotification?.(n);
       window.dispatchEvent(new CustomEvent(LIVE_EVENT, { detail: n }));
+    });
+    es.addEventListener('chat', (e) => { try { chatEmit({ type: 'chat', ...JSON.parse(e.data) }); } catch { /* ignoré */ } });
+    es.addEventListener('typing', (e) => {
+      try { chatState.typing = JSON.parse(e.data).typing || []; chatEmit({ type: 'typing', typing: chatState.typing }); } catch { /* ignoré */ }
+    });
+    es.addEventListener('presence', (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        if ('team_online' in d) chatState.teamOnline = Boolean(d.team_online);
+        if (d.online) { chatState.online = new Set(d.online); chatState.presenceKnown = true; }
+        chatEmit({ type: 'presence', ...d });
+      } catch { /* ignoré */ }
     });
     es.addEventListener('bye', () => { close(); stopped = true; });
     es.onerror = () => {
@@ -70,6 +91,13 @@ export function startLive({ onUnread, onNotification, onFallbackPoll }) {
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('online', onOnline);
   };
+}
+
+/** Écoute les évènements de messagerie ({type: 'chat'|'typing'|'presence'|'resync', …}). */
+export function onChat(fn) {
+  const h = (e) => fn(e.detail || {});
+  window.addEventListener(CHAT_EVENT, h);
+  return () => window.removeEventListener(CHAT_EVENT, h);
 }
 
 /** Recharge une donnée dès qu'une notification qui la concerne arrive (ex. nouveau message). */

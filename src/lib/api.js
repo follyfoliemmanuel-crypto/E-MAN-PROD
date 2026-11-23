@@ -22,7 +22,25 @@ export const CLIENT_ORDER_LABELS = {
 export const PAYMENT_LABELS = { non_paye: 'Non payé', acompte: 'Acompte payé', paye: 'Payé' };
 export const TRAINING_STATUSES = ['Nouvelle demande', 'Contacté', 'Inscrit', 'Terminé', 'Annulé'];
 
-export async function call(path, { method = 'GET', body } = {}) {
+/**
+ * Action sensible refusée faute de code récent (équipe) : la fenêtre « code Google Authenticator »
+ * s'ouvre (enregistrée par l'application), puis la requête est rejouée une fois.
+ */
+let stepUpPrompt = null;
+export const setStepUpPrompt = (fn) => { stepUpPrompt = fn; };
+
+export async function call(path, options = {}) {
+  try {
+    return await rawCall(path, options);
+  } catch (err) {
+    if (err.status === 403 && err.data?.code === 'mfa_step_up' && stepUpPrompt && !options.noStepUp) {
+      if (await stepUpPrompt()) return rawCall(path, options);
+    }
+    throw err;
+  }
+}
+
+async function rawCall(path, { method = 'GET', body } = {}) {
   let res;
   try {
     res = await fetch(path, {
@@ -232,7 +250,21 @@ export async function markNotificationsRead(ids) {
 // Fichiers : préparation, envoi direct au stockage, vérification.
 // Le serveur renvoie une autorisation signée : un formulaire signé pour Cloudinary (champs
 // + fichier), ou une adresse PUT (stockage local de développement). Aucune clé secrète ici.
-export async function uploadFile(purpose, targetId, original) {
+/** Envoi avec progression (0 à 1) : XMLHttpRequest, car fetch ne donne pas l'avancement de l'envoi. */
+function sendWithProgress(url, { method, headers = {}, body }, onProgress) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open(method, url);
+    for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
+    x.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    x.onload = () => resolve({ ok: x.status >= 200 && x.status < 300, status: x.status, json: async () => JSON.parse(x.responseText || '{}') });
+    x.onerror = () => reject(new Error('network'));
+    x.onabort = () => reject(new Error('abort'));
+    x.send(body);
+  });
+}
+
+export async function uploadFile(purpose, targetId, original, { onProgress } = {}) {
   if (DEMO) throw new Error('L’envoi de fichiers n’est pas disponible en démonstration.');
   // Photos du site et de profil : réduites dans le navigateur si besoin (jusqu'à 50 Mo choisis).
   // Pièces jointes : compressées seulement si elles dépassent la limite (src/lib/compress.js).
@@ -247,9 +279,11 @@ export async function uploadFile(purpose, targetId, original) {
       const form = new FormData();
       for (const [k, v] of Object.entries(upload.fields)) form.append(k, v);
       form.append('file', file);
-      res = await fetch(upload.url, { method: upload.method || 'POST', body: form });
+      res = onProgress ? await sendWithProgress(upload.url, { method: upload.method || 'POST', body: form }, onProgress)
+        : await fetch(upload.url, { method: upload.method || 'POST', body: form });
     } else {
-      res = await fetch(upload.url, { method: upload.method, headers: upload.headers, body: file });
+      res = onProgress ? await sendWithProgress(upload.url, { method: upload.method, headers: upload.headers, body: file }, onProgress)
+        : await fetch(upload.url, { method: upload.method, headers: upload.headers, body: file });
     }
   } catch {
     throw new Error('Envoi interrompu. Vérifiez votre connexion et réessayez.');
@@ -391,6 +425,34 @@ const qs = (o) => Object.entries(o).filter(([, v]) => v !== undefined && v !== n
 export const quotePdfUrl = (id) => `/api/quotes?id=${encodeURIComponent(id)}&pdf=1`;
 export const orderPdfUrl = (id) => `/api/orders?id=${encodeURIComponent(id)}&pdf=1`;
 export const avatarUrl = (fileId) => (fileId ? `/api/files?id=${encodeURIComponent(fileId)}&inline=1` : null);
+
+// ----- Messagerie privée (v4) ---------------------------------------------------
+const enc = encodeURIComponent;
+const toOf = (who) => (who && who !== 'me' ? { to: who } : {});
+export const chatApi = {
+  list: (who = 'me', { before = null, mark = true } = {}) => (DEMO ? Promise.resolve({ messages: [], has_more: false, me: 'demo', side: 'client', peer: { kind: 'team', members: [], online: true } })
+    : call(`/api/inbox?chat=${enc(who)}${before ? `&before=${enc(before)}` : ''}${mark ? '' : '&mark='}`)),
+  threads: (q = '') => (DEMO ? Promise.resolve({ threads: [] }) : call(`/api/inbox?chat=threads${q ? `&q=${enc(q)}` : ''}`)),
+  unread: () => (DEMO ? Promise.resolve({ unread: 0 }) : call('/api/inbox?chat=unread')),
+  team: () => (DEMO ? Promise.resolve({ company: 'E-MAN PROD', members: [], online: false }) : call('/api/inbox?chat=team')),
+  profile: (id) => call(`/api/inbox?chat=profile&of=${enc(id)}`),
+  send: (who, payload) => call('/api/inbox', { method: 'POST', body: { action: 'chat', ...toOf(who), ...payload } }),
+  typing: (who) => call('/api/inbox', { method: 'POST', body: { action: 'typing', ...toOf(who) } }),
+};
+
+// ----- Double authentification (Google Authenticator) -----------------------------
+const post = (action, body = {}) => call(`/api/auth/${action}`, { method: 'POST', body });
+export const mfaApi = {
+  verify: (code, remember) => post('mfa-verify', { code, remember }),
+  status: () => (DEMO ? Promise.resolve({ team: true, enabled: false, required: false, devices: [], trust_days: 30, recovery_left: 0 }) : call('/api/auth/mfa')),
+  setup: () => post('mfa-setup'),
+  enable: (code) => post('mfa-enable', { code }),
+  confirm: (code) => call('/api/auth/mfa-confirm', { method: 'POST', body: { code }, noStepUp: true }),
+  recovery: () => post('mfa-recovery'),
+  disable: (code) => post('mfa-disable', { code }),
+  revokeDevice: (body) => post('device-revoke', body),
+  resetFor: (user_id) => call('/api/account', { method: 'POST', body: { action: 'mfa_reset', user_id } }),
+};
 
 export const space = {
   stats: () => (DEMO ? Promise.resolve({ demo: true, sections: [] }) : call('/api/account?stats=1')),

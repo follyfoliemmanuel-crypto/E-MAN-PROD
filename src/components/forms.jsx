@@ -5,6 +5,7 @@ import { useCatalog } from '../lib/catalog.jsx';
 import { formatDay } from '../lib/api.js';
 import { submitOrder, submitTraining, auth, DEMO } from '../lib/api.js';
 import { Link } from '../lib/router.jsx';
+import { PasswordInput } from './PasswordInput.jsx';
 
 const PHONE_PATTERN = '[+0-9 .\\-]{8,20}';
 
@@ -249,7 +250,7 @@ function GoogleButton({ mode, available, onDemo }) {
   );
 }
 
-export function AuthForm({ onDone, notify, startDemo, google = false, initialMode = 'login', serverIssue = '' }) {
+export function AuthForm({ onDone, notify, startDemo, google = false, initialMode = 'login', serverIssue = '', onMfa }) {
   const [mode, setMode] = useState(initialMode === 'signup' ? 'signup' : 'login');
   // Inscription : Google d'abord (un clic, adresse déjà vérifiée) ; l'e-mail reste possible.
   const [emailSignup, setEmailSignup] = useState(!google);
@@ -285,6 +286,8 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
         notify(r.verificationSent ? 'Compte créé. Confirmez votre adresse avec le lien reçu par e-mail.' : r.verification === 'terminal' ? 'Compte créé. (Développement : le lien de confirmation est affiché dans le terminal.)' : 'Compte créé.');
       } else {
         const r = await auth.login({ email: f.email, password: f.password });
+        // Compte de l'équipe, appareil non reconnu : étape « code Google Authenticator ».
+        if (r.mfa_required) { onMfa?.(); return; }
         onDone(r.user);
         notify('Vous êtes connecté.');
       }
@@ -331,7 +334,7 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
       <Field label="Adresse e-mail"><input required type="email" autoComplete="email" value={f.email} onChange={set('email')} /></Field>
       {mode !== 'forgot' && (
         <Field label="Mot de passe" hint={mode === 'signup' ? '10 caractères minimum. Une courte phrase est plus sûre et plus facile à retenir.' : undefined}>
-          <input required type="password" minLength={mode === 'signup' ? 10 : 1} maxLength={128} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={f.password} onChange={set('password')} />
+          <PasswordInput required minLength={mode === 'signup' ? 10 : 1} maxLength={128} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={f.password} onChange={set('password')} />
         </Field>
       )}
       <ErrorLine error={error} />
@@ -346,7 +349,7 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
   );
 }
 
-export function NewPasswordForm({ token, onDone, notify }) {
+export function NewPasswordForm({ token, onDone, notify, onMfa }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -356,6 +359,7 @@ export function NewPasswordForm({ token, onDone, notify }) {
     setError('');
     try {
       const r = await auth.reset({ token, password });
+      if (r.mfa_required) { notify('Mot de passe enregistré. Confirmez avec Google Authenticator.'); onMfa?.(); return; }
       onDone(r.user);
       notify('Mot de passe enregistré. Vous êtes connecté.');
     } catch (err) {
@@ -368,7 +372,7 @@ export function NewPasswordForm({ token, onDone, notify }) {
     <form className="form" onSubmit={onSubmit}>
       <h2 className="formTitle">Choisir un nouveau mot de passe</h2>
       <Field label="Nouveau mot de passe" hint="10 caractères minimum. Une courte phrase est plus sûre et plus facile à retenir.">
-        <input required type="password" minLength={10} maxLength={128} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <PasswordInput required minLength={10} maxLength={128} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
       <ErrorLine error={error} />
       <Submit busy={busy}>Enregistrer le mot de passe</Submit>

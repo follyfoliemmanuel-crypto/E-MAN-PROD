@@ -24,7 +24,7 @@ export async function listMessages(actor, target) {
   const mine = t.type === 'support' ? t.id === actor.id : !isTeam(actor, t.perm);
   const other = mine ? 'admin' : 'client';
   // Ouvrir le fil marque comme lus les messages de l'autre partie.
-  await query(`update messages set read_at = now() where ${t.column} = $1 and author_role = $2 and read_at is null returning id`, [t.id, other]);
+  await query(`update messages set read_at = now(), delivered_at = coalesce(delivered_at, now()), changed_at = now() where ${t.column} = $1 and author_role = $2 and read_at is null returning id`, [t.id, other]);
   return query(
     `select m.id, m.author_role, m.body, m.created_at, m.read_at, u.full_name as author_name,
             coalesce((select json_agg(json_build_object('id', f.id, 'original_name', f.original_name, 'mime_type', f.mime_type, 'size_bytes', f.size_bytes) order by f.created_at)
@@ -44,7 +44,7 @@ export async function postMessage(actor, target, body) {
     [t.id, actor.id, role, body],
   );
   const label = t.type === 'quote' ? `devis ${t.res.number}` : t.type === 'order' ? `commande ${t.res.number}` : 'demande d’assistance';
-  const link = t.type === 'quote' ? `/espace?devis=${t.id}` : t.type === 'order' ? `/espace?commande=${t.id}` : role === 'admin' ? '/espace?section=assistance' : `/espace?section=assistance&client=${t.id}`;
+  const link = t.type === 'quote' ? `/espace?devis=${t.id}` : t.type === 'order' ? `/espace?commande=${t.id}` : role === 'admin' ? '/espace?section=messagerie' : `/espace?section=messagerie&client=${t.id}`;
   if (role === 'admin') {
     const title = t.type === 'support' ? 'Réponse de l’équipe E-MAN PROD' : `Nouveau message sur votre ${label}`;
     await notifyUser(t.res.user_id, { kind: 'message.new', title, body: body.slice(0, 140), link, email: 'message_new', vars: { sujet: title }, emailBody: body.slice(0, 1000) });

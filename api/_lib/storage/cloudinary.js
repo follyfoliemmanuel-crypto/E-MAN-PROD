@@ -114,7 +114,12 @@ export function cloudinaryProvider(cfg) {
      * Prépare un envoi direct. Clé = identifiant public Cloudinary, dans le dossier de
      * l'application ; les fichiers bruts gardent l'extension dans leur identifiant.
      */
-    prepareUpload({ key, ext, visibility }) {
+    /**
+     * @param {{key: string, ext: string, visibility: string, reencode?: string|null}} o
+     *   reencode : transformation appliquée À L'ARRIVÉE (Cloudinary ne garde que la copie réencodée,
+     *   sans métadonnées ni données cachées), pour les photos affichées sur le site.
+     */
+    prepareUpload({ key, ext, visibility, reencode = null }) {
       const resourceType = resourceTypeOf(ext);
       const base = `${cfg.folder}/${key.replace(/^public\//, '').replace(/\.[a-z0-9]+$/, '')}`;
       const publicId = resourceType === 'raw' ? `${base}.${ext}` : base;
@@ -124,6 +129,7 @@ export function cloudinaryProvider(cfg) {
         overwrite: 'false',
         public_id: publicId,
         timestamp: String(now()),
+        transformation: resourceType === 'image' && reencode ? reencode : undefined,
         type,
       };
       const clean = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined));

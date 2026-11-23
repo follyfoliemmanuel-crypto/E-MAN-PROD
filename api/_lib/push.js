@@ -152,7 +152,9 @@ const TEAM_TEXT = [
   [/^quote\.accepte$/, 'Un client a accepté un devis'],
   [/^quote\.refuse$/, 'Un client a refusé un devis'],
   [/^quote\./, 'Du nouveau sur un devis'],
+  [/^message\.voice$/, 'Nouveau message vocal d’un client'],
   [/^message\./, 'Nouveau message d’un client'],
+  [/^security\./, 'Alerte de sécurité sur votre compte'],
   [/^client\./, 'Nouveau client inscrit'],
   [/^enrollment\.new$/, 'Nouvelle inscription à une formation'],
   [/^enrollment\./, 'Du nouveau sur une inscription'],
@@ -161,7 +163,9 @@ const TEAM_TEXT = [
 ];
 const CLIENT_TEXT = [
   [/^test$/, 'Notification d’essai : tout fonctionne sur cet appareil'],
-  [/^message\./, 'Nouveau message de l’équipe E-MAN PROD'],
+  [/^message\.voice$/, 'Vous avez reçu un message vocal sur E-MAN PROD.'],
+  [/^message\./, 'Vous avez reçu un nouveau message sur E-MAN PROD.'],
+  [/^security\./, 'Alerte de sécurité sur votre compte'],
   [/^quote\.envoye$/, 'Votre devis est prêt'],
   [/^quote\./, 'Du nouveau sur votre devis'],
   [/^order\.received$/, 'Votre commande est bien reçue'],

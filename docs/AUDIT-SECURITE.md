@@ -131,3 +131,56 @@ Correctifs trouvés pendant les tests de la v3.9.2 :
 - Après une coupure réseau, une conversation ouverte pouvait rester sans le message arrivé pendant la coupure. Une relecture unique est désormais faite à la reconnexion.
 
 Dépendance « 1 high » signalée par `npm install` : je n'ai pas pu lancer `npm audit` ici, faute d'accès réseau. Comme `npm audit fix --force` propose une mise à jour majeure, il s'agit très probablement de Vite, l'outil de construction, utilisé seulement sur l'ordinateur de développement et pendant la construction sur Vercel, jamais par le site en ligne. Passer à Vite 7 ou 8 change de version majeure : à faire de votre côté avec `npm i -D vite@latest @vitejs/plugin-react@latest`, puis `npm run build` pour vérifier.
+
+
+## v3.10.0 — Fichiers piégés (« chevaux de Troie » en photo, PDF ou archive)
+
+### Le risque
+Un fichier peut avoir l'apparence d'une photo ou d'un PDF tout en transportant autre chose : code PHP ou programme collé à la fin d'une vraie image (fichier « polyglotte »), ZIP contenant `facture.pdf.exe`, document Word à macros, PDF qui exécute du JavaScript à l'ouverture, EPS qui lance une commande à l'impression. Le site ne l'exécute jamais (stockage Cloudinary, type contrôlé), mais la personne qui ouvre le fichier sur son ordinateur peut être visée.
+
+### Ce qui est fait
+1. **Réencodage à l'arrivée** des photos publiées (réalisations, photos du site, profils) : transformation Cloudinary signée (`c_limit,…,q_90`) ; seule la copie réencodée est gardée. Le navigateur ne peut pas retirer la transformation (signature invalide).
+2. **Inspection du contenu complet** à la confirmation (`api/_lib/scan.js`), pour tous les fichiers, Cloudinary ou stockage local :
+   - images : fin réelle trouvée en suivant la structure (pas la dernière marque, facile à piéger) ; rien d'exécutable ou d'archive après ; pas de code PHP ou script ;
+   - ZIP et formats Office/CorelDRAW : répertoire lu sans décompresser ; refus des programmes et scripts, doubles extensions, archives imbriquées, chemins absolus ou « ../ », entrées chiffrées, ZIP64, plus de 2000 entrées, plus de 500 Mo décompressés, taux de compression anormal ; Office : macros (`vbaProject.bin`), ActiveX, objets intégrés, modèle ou objet distant ;
+   - PDF et AI : noms encodés décodés (`/J#61vaScript`), flux compressés décompressés (budget limité) ; refus de JavaScript, Launch, EmbeddedFile, RichMedia, ImportData, SubmitForm, GoToE ;
+   - EPS et AI PostScript : refus de `%pipe%`, accès `%os%`, `.forceput`, `deletefile`, `renamefile`, `/OutputFile`, `setfileparameters`…
+3. **Quarantaine** : fichier effacé du stockage, statut `rejected`, message clair au client, entrée `security.upload_blocked` (raison, usage, nom) dans le journal de sécurité.
+
+### Vérifié
+- 38 fichiers fabriqués (sains et piégés) : 38/38 classés correctement.
+- 1 432 fichiers réels de la machine (445 PDF, 201 EPS, 783 images, documents Office) : aucune fausse alerte.
+- Parcours complet via l'API : Cloudinary simulé 40/40, stockage local 9/9 ; suite Cloudinary existante 103/103.
+
+### Limites (honnêtes)
+- Ce n'est pas un antivirus : un logiciel malveillant inconnu, dans un format accepté et sans structure suspecte, peut passer. Complément possible : module antivirus payant de Cloudinary.
+- Un PDF légitime avec formulaire à calcul JavaScript ou pièce jointe sera refusé : le client peut l'« imprimer en PDF » avant de l'envoyer.
+- Côté atelier : garder Windows Defender actif et ne jamais exécuter un fichier reçu d'un client.
+
+
+## v4.0.0 — Messagerie privée et double authentification
+
+### Messagerie
+- Conversation déterminée côté serveur : le client n'envoie jamais l'identifiant de sa conversation ;
+  l'équipe a besoin du droit « support ». Tests : lecture, écriture, profil, fichiers d'un autre
+  client → 404 ; collaborateur sans droit → 403/404.
+- Pièces jointes : seulement des fichiers de la personne, vérifiés (format réel + inspection v3.10),
+  non rattachés ; un fichier non envoyé n'est visible que de son auteur.
+- Profil public de l'équipe : liste fermée de champs (jamais e-mail, téléphone, rôle, droits).
+- Présence : le client sait seulement si l'équipe est en ligne, jamais quels autres clients le sont.
+- En-têtes : `Permissions-Policy: microphone=(self)` (le micro reste interdit à tout site tiers) ;
+  CSP `media-src 'self' blob: https://res.cloudinary.com`.
+
+### Google Authenticator (équipe)
+- TOTP RFC 6238 (vecteurs officiels vérifiés), secret AES-256-GCM, anti-rejeu, ± 30 s.
+- Aucune session tant que le code n'est pas saisi (étape de 10 minutes, 5 essais, 10 / heure).
+- Obligatoire en production : sans activation, le compte n'a aucun droit d'équipe (traité comme
+  client par le serveur, pas seulement masqué dans l'interface).
+- Appareil de confiance : jeton aléatoire haché, lié au navigateur, 30 jours max, révoqué à la
+  déconnexion, au changement de mot de passe, à la fermeture de sa session, sur mésusage.
+- Actions sensibles : code de moins de 10 minutes (gestion de l'équipe, réglages, mot de passe,
+  codes de récupération, réinitialisation d'un collaborateur).
+- Récupération : codes à usage unique hachés ; réinitialisation par un autre administrateur
+  reconfirmé ; script serveur `npm run mfa:reset` en dernier recours. Jamais sur simple demande.
+- Vérifié : 62 contrôles API (dont Google + code et mode production), 12 contrôles TOTP, QR code
+  décodé par OpenCV, parcours complet dans le navigateur.

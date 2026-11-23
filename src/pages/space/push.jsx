@@ -73,7 +73,7 @@ export function PushSettings({ notify, team = false }) {
               : <p className="notice">Ce navigateur ne permet pas les notifications push. Essayez Chrome, Edge, Firefox ou Safari à jour.</p>
           ) : (
             <>
-              {blocked && !on && <p className="notice" role="status">Les notifications sont bloquées pour ce site. Autorisez-les dans les réglages du navigateur (icône à gauche de l’adresse), puis réessayez.</p>}
+              {blocked && !on && <p className="notice" role="status">Les notifications sont bloquées pour ce site. {browserHelp()}</p>}
               <div className="pushActions">
                 <button type="button" className={`btn btnSmall ${on ? 'btnGhost' : 'btnPrimary'}`} disabled={busy} onClick={toggle} aria-pressed={on}>
                   {on ? <><BellOff size={16} aria-hidden="true" /> Désactiver sur cet appareil</> : <><BellRing size={16} aria-hidden="true" /> Activer sur cet appareil</>}
@@ -95,5 +95,87 @@ export function PushSettings({ notify, team = false }) {
         </ul>
       )}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Invitation à activer les notifications (v4). La demande NATIVE du navigateur ne s'ouvre
+// qu'au clic sur « Activer les notifications ». États : default (pas encore décidé : invitation
+// à chaque visite), granted (rien à montrer), denied (aide pour réactiver, une fois par visite).
+// ---------------------------------------------------------------------------
+const DISMISS_KEY = 'eman-push-invite';
+const dismissedThisVisit = () => { try { return sessionStorage.getItem(DISMISS_KEY) === '1'; } catch { return false; } };
+const dismissVisit = () => { try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch { /* stockage indisponible */ } };
+
+export function browserHelp() {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) return 'Sur iPhone / iPad : Réglages → Notifications → E-MAN PROD → Autoriser les notifications.';
+  if (/Android/.test(ua)) return 'Sur Android : touchez l’icône à gauche de l’adresse (ou ⋮ → Paramètres → Paramètres des sites) → Notifications → Autoriser, puis rechargez la page.';
+  if (/Firefox\//.test(ua)) return 'Dans Firefox : cliquez sur l’icône à gauche de l’adresse → Permissions → Notifications → Autoriser, puis rechargez la page.';
+  if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) return 'Dans Safari : Safari → Réglages → Sites web → Notifications → E-MAN PROD → Autoriser.';
+  return 'Dans Chrome ou Edge : cliquez sur l’icône à gauche de l’adresse → Notifications → Autoriser, puis rechargez la page.';
+}
+
+export function NotifyInvite({ notify, team = false }) {
+  const supported = pushSupported();
+  const [perm, setPerm] = useState(() => (supported ? Notification.permission : 'unsupported'));
+  const [hidden, setHidden] = useState(() => DEMO || dismissedThisVisit());
+  const [busy, setBusy] = useState(false);
+  const [key, setKey] = useState(null);
+  useEffect(() => {
+    if (hidden || DEMO) return;
+    pushApi.status().then((s) => setKey(s.configured ? s.public_key : null)).catch(() => setKey(null));
+  }, [hidden]);
+  const close = () => { dismissVisit(); setHidden(true); };
+  if (hidden) return null;
+  if (!supported && needsHomeScreen()) {
+    return (
+      <aside className="notifyInvite" role="region" aria-label="Notifications sur iPhone">
+        <BellRing size={22} aria-hidden="true" />
+        <div><strong>Recevoir les alertes sur votre iPhone</strong><p>Touchez <strong>Partager</strong> puis <strong>Sur l’écran d’accueil</strong>, ouvrez E-MAN PROD depuis cette icône, et activez les notifications.</p></div>
+        <button type="button" className="btn btnGhost btnSmall" onClick={close}>Plus tard</button>
+      </aside>
+    );
+  }
+  if (!supported || !key || perm === 'granted') return null;
+  if (perm === 'denied') {
+    return (
+      <aside className="notifyInvite denied" role="region" aria-label="Notifications bloquées">
+        <BellOff size={22} aria-hidden="true" />
+        <div><strong>Les notifications sont bloquées pour ce site</strong><p>{browserHelp()}</p></div>
+        <button type="button" className="btn btnGhost btnSmall" onClick={close}>Compris</button>
+      </aside>
+    );
+  }
+  return (
+    <aside className="notifyInvite" role="region" aria-label="Activer les notifications">
+      <BellRing size={22} aria-hidden="true" />
+      <div>
+        <strong>Ne manquez aucune réponse</strong>
+        <p>Recevez une alerte sur cet appareil, même site fermé, pour :</p>
+        <ul>
+          {(team
+            ? ['les nouveaux messages des clients', 'les nouvelles demandes de devis', 'les nouvelles commandes', 'les informations importantes']
+            : ['les nouveaux messages', 'les réponses de l’administration', 'les mises à jour de vos devis', 'vos commandes', 'les informations importantes']).map((t) => <li key={t}>{t}</li>)}
+        </ul>
+        <small className="muted">Le texte affiché reste discret : aucun contenu de message ni montant sur l’écran verrouillé.</small>
+      </div>
+      <div className="inviteActions">
+        <button type="button" className="btn btnPrimary btnSmall" disabled={busy} onClick={async () => {
+          setBusy(true);
+          try {
+            await enablePush(key);
+            setPerm('granted');
+            notify('Notifications activées sur cet appareil.');
+          } catch (err) {
+            const now = Notification.permission;
+            setPerm(now);
+            if (now === 'default') notify('Vous pourrez les activer plus tard, dans Paramètres.');
+            else if (now !== 'denied') notify(err.message, 'error');
+          } finally { setBusy(false); }
+        }}>Activer les notifications</button>
+        <button type="button" className="linkBtn" onClick={close}>Plus tard</button>
+      </div>
+    </aside>
   );
 }

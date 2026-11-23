@@ -34,7 +34,7 @@ export function Loading({ lines = 3 }) {
 export function ErrorBox({ error, onRetry }) {
   return (
     <div className="errorBox" role="alert">
-      <p>{error}</p>
+      <p>{typeof error === 'string' ? error : error?.message || 'Une erreur est survenue. Réessayez.'}</p>
       {onRetry && <button type="button" className="btn btnGhost btnSmall" onClick={onRetry}>Réessayer</button>}
     </div>
   );

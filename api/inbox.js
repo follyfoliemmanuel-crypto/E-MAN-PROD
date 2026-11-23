@@ -8,6 +8,14 @@
 //   POST {action: 'read', ids?}          marquer comme lues (toutes si ids absent) ; {action: 'unread', ids}
 //   GET ?stream=1 [&since=]               flux temps réel (Server-Sent Events) de MES notifications
 //   GET ?announcements=1                 annonces publiées ; POST {action: 'announce', …} : admin
+// Messagerie privée (v4) — une conversation par client :
+//   GET ?chat=me | ?chat=<client> [&before=<date>] [&mark=0]   messages (40 par page, du plus récent)
+//   GET ?chat=threads [&q=]              équipe « support » : conversations par activité récente
+//   GET ?chat=unread                     nombre de messages non lus
+//   GET ?chat=team                       client : profils publics de l'équipe (+ présence)
+//   GET ?chat=profile&of=<client>        équipe : profil du client
+//   POST {action:'chat', to?, body, kind?, file_ids?, voice_ms?}   envoyer
+//   POST {action:'typing', to?}          « écrit un message… »
 import { z } from 'zod';
 import { handler, send, readJson, readQuery, Q } from './_lib/http.js';
 import { requireUser, requirePermission, requireAdmin, rateLimit } from './_lib/auth.js';
@@ -15,6 +23,7 @@ import { actorOf } from './_lib/activity.js';
 import * as s from './_lib/schemas.js';
 import { streamNotifications } from './_lib/services/live.js';
 import * as inbox from './_lib/services/inbox.js';
+import * as chat from './_lib/services/chat.js';
 
 const messageSchema = z.object({
   quote_id: s.optionalUuid('Devis'),
@@ -31,11 +40,22 @@ export default handler({
     const q = readQuery(req, {
       stream: Q.flag, since: Q.text(80), notifications: Q.flag, unread: Q.flag, category: Q.text(30), before: Q.text(40), limit: Q.text(4),
       announcements: Q.flag, support: Q.text(40), quote: Q.id('Devis'), order: Q.id('Commande'),
+      chat: Q.text(40), of: Q.id('Client'), mark: Q.flag, q: Q.text(100), conn: Q.text(40),
     });
     if (q.stream === '1') {
       // Flux temps réel (SSE) : notifications de la personne connectée uniquement.
       await rateLimit(`live:${user.id}`, 120, 60, 'Trop de connexions en temps réel. Rechargez la page dans un moment.');
-      return streamNotifications(req, res, user, { cursor: q.since || null });
+      const conn = /^[A-Za-z0-9_-]{8,40}$/.test(q.conn || '') ? q.conn : null;
+      return streamNotifications(req, res, user, { cursor: q.since || null, conn });
+    }
+    if (q.chat) {
+      if (q.chat === 'threads') return send(res, 200, { threads: await chat.threads(actor, { search: q.q || '' }) });
+      if (q.chat === 'unread') return send(res, 200, { unread: await chat.unreadCount(actor) });
+      if (q.chat === 'team') return send(res, 200, await chat.teamProfiles());
+      if (q.chat === 'profile') return send(res, 200, { profile: await chat.clientProfile(actor, s.parse(s.uuid('Client'), q.of)) });
+      const who = q.chat === 'me' ? 'me' : s.parse(s.uuid('Conversation'), q.chat);
+      const before = q.before ? s.parse(z.string().datetime({ offset: true, message: 'Date invalide.' }), q.before) : null;
+      return send(res, 200, await chat.listChat(actor, who, { before, mark: q.mark !== '' }));
     }
     if (q.notifications === '1') {
       const f = s.parse(z.object({
@@ -76,6 +96,22 @@ export default handler({
         send_email: z.boolean().default(false),
       }), body);
       return send(res, 201, await inbox.publishAnnouncement(actor, a));
+    }
+    if (body.action === 'chat') {
+      await rateLimit(`message:${user.id}`, 30, 60, 'Trop de messages envoyés. Réessayez dans un moment ou appelez-nous.');
+      const m = s.parse(z.object({
+        to: s.optionalUuid('Conversation'),
+        body: s.text('Message', { max: 4000 }),
+        kind: s.oneOf(['text', 'file', 'voice'], 'Type de message').default('text'),
+        file_ids: s.list(s.uuid('Fichier'), 'Fichiers', { max: 5 }).default([]),
+        voice_ms: z.number().int().min(0).max(600000).optional().nullable(),
+      }), body);
+      return send(res, 201, { message: await chat.postChat(actor, m.to || 'me', { ...m, name: user.full_name }) });
+    }
+    if (body.action === 'typing') {
+      await rateLimit(`typing:${user.id}`, 40, 1, 'Trop de signaux.');
+      const { to } = s.parse(z.object({ to: s.optionalUuid('Conversation') }), body);
+      return send(res, 200, await chat.setTyping(actor, to || 'me'));
     }
     if (body.action === 'read') {
       const { ids } = s.parse(z.object({ ids: s.list(s.uuid('Notification'), 'Notifications', { max: 200 }) }), body);

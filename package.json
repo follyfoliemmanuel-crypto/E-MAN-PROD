@@ -1,7 +1,7 @@
 {
   "name": "eman-prod-digital",
   "private": true,
-  "version": "3.9.2",
+  "version": "4.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,6 +22,7 @@
     "check": "node scripts/check.mjs",
     "push:keys": "node scripts/push-keys.mjs",
     "push:export-keys": "node scripts/push-export-keys.mjs",
+    "mfa:reset": "node scripts/mfa-reset.mjs",
     "db:app-role": "node scripts/db-app-role.mjs",
     "audit": "npm audit --omit=dev && npm audit",
     "storage:check": "node scripts/storage-check.mjs",

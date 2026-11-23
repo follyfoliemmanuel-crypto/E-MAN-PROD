@@ -4,6 +4,7 @@ import { BUSINESS, LEGAL, TESTIMONIALS, AUDIENCES, HERO_SLIDES, whatsappLink } f
 import { Link } from '../lib/router.jsx';
 import { useApp } from '../context.js';
 import { useCatalog } from '../lib/catalog.jsx';
+import { useMedia } from '../lib/media.jsx';
 import { space } from '../lib/api.js';
 import { QuoteForm } from '../components/forms.jsx';
 import { ContactList } from '../components/Layout.jsx';
@@ -48,8 +49,15 @@ const STEPS = [
 export function Home() {
   const { openQuote } = useApp();
   const cat = useCatalog();
+  const media = useMedia();
   const ready = cat.status === 'ready';
   const home = cat.content?.home || {};
+  // Diapositives 1 à 4 toujours là (visuel provisoire tant qu'aucune photo) ; 5 à 10 seulement avec une photo.
+  const slides = HERO_SLIDES.flatMap((s) => {
+    if (!s.optional) return [s];
+    const m = media.get(s.slot);
+    return m && !m.placeholder ? [{ ...s, theme: (m.alt || s.theme).slice(0, 60) }] : [];
+  });
   // Avis réels, publiés après relecture dans l'admin (aucun avis inventé).
   const reviews = (cat.testimonials || []).map((t) => ({ name: t.author_name, role: t.author_title, text: t.content }));
   const cards = cat.prestations.map((p) => ({ ...prestationImage(p), title: p.title, text: p.summary, to: `/prestations/${p.slug}` }));
@@ -60,7 +68,7 @@ export function Home() {
 
   return (
     <main id="contenu">
-      <HeroCarousel slides={HERO_SLIDES}>
+      <HeroCarousel slides={slides}>
         <p className="eyebrow light heroEyebrow"><span className="eyebrowDash" aria-hidden="true" />{home.eyebrow || BUSINESS.slogan}</p>
         <h1 className="heroTitle">{home.title || 'DONNEZ VIE À VOS IDÉES AVEC E-MAN PROD'}</h1>
         <p className="heroLead">

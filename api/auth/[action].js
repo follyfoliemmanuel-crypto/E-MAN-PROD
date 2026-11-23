@@ -10,14 +10,25 @@
 //   POST password                    changer mon mot de passe (ou en créer un après Google)
 //   POST revoke {id} | {others:true} fermer une session / toutes mes autres sessions
 //   POST google-unlink               retirer la connexion Google (si un mot de passe existe)
+//   Double authentification (équipe) :
+//   POST mfa-verify {code, remember}  code à 6 chiffres (ou de récupération) après le mot de passe / Google
+//   GET  mfa                          état : activée, obligatoire, codes restants, appareils de confiance
+//   POST mfa-setup | mfa-enable {code} activation (QR code montré une seule fois)
+//   POST mfa-confirm {code}           reconfirmer avant une action sensible (10 minutes)
+//   POST mfa-recovery                 nouveaux codes de récupération (après reconfirmation)
+//   POST mfa-disable {code}           désactiver (seulement si elle n'est pas obligatoire)
+//   POST device-revoke {id}|{all}     révoquer un appareil de confiance (ses sessions sont fermées)
 import { z } from 'zod';
 import { query, one } from '../_lib/db.js';
 import { handler, send, readJson, clientIp, siteUrl, HttpError, readQuery, logError } from '../_lib/http.js';
 import {
   hashPassword, verifyPassword, needsRehash, dummyVerify, checkPassword, createSession, destroySession, currentUser,
   requireUser, publicUser, rateLimit, sha256, logSecurity, maskEmail, issueToken,
-  promoteOwner,
+  promoteOwner, effectiveUser, mfaCookie, readCookie, appendCookie, cookie, ipHash,
 } from '../_lib/auth.js';
+import * as mfa from '../_lib/mfa.js';
+import { qrSvg } from '../_lib/qr.js';
+import { notifyUser } from '../_lib/activity.js';
 import { googleConfigured, startGoogle, googleCallback, redirectUri } from '../_lib/google.js';
 import { sendMail, mailConfigured, mailStatus } from '../_lib/mail.js';
 import { SCHEMA_VERSION } from '../_lib/version.js';
@@ -226,11 +237,15 @@ const actions = {
     }
     // Ancien hachage (scrypt) : remplacé par Argon2id maintenant que le mot de passe est connu.
     if (needsRehash(user.password_hash)) await query('update users set password_hash = $2 where id = $1 returning id', [user.id, await hashPassword(pw)]);
-    await createSession(req, res, user.id);
+    if ((await createSession(req, res, user.id)).mfa_required) {
+      // Mot de passe correct, appareil non reconnu : le code Google Authenticator est demandé.
+      await logSecurity(req, 'auth.mfa_challenge', { userId: user.id, data: { method: 'password' } });
+      return send(res, 200, { mfa_required: true });
+    }
     // Réponse construite à partir d'une liste fermée de colonnes (jamais le hachage du mot de passe).
     const me = await one(`update users set last_login_at = now() where id = $1 returning ${ME_COLS}`, [user.id]);
     await logSecurity(req, 'auth.login', { userId: me.id, role: me.role, data: { method: 'password' } });
-    send(res, 200, { user: publicUser(me) });
+    send(res, 200, { user: publicUser(await effectiveUser(me.id)) });
   },
 
   async logout(req, res) {
@@ -270,11 +285,13 @@ const actions = {
     );
     // Toutes les sessions ouvertes (peut-être par quelqu'un d'autre) sont fermées.
     await query('delete from sessions where user_id = $1 returning user_id', [userId]);
-    await createSession(req, res, userId, { method: 'reset' });
+    // Mot de passe changé : plus aucun appareil de confiance, le code est redemandé partout.
+    await mfa.revokeDevices(userId);
     await logSecurity(req, 'auth.password_reset', { userId });
+    if ((await createSession(req, res, userId, { method: 'reset' })).mfa_required) return send(res, 200, { mfa_required: true });
     const user = await one(`select ${ME_COLS} from users where id = $1`, [userId]);
     await claimGuestRequests(user);
-    send(res, 200, { user: publicUser(user) });
+    send(res, 200, { user: publicUser(await effectiveUser(userId)) });
   },
 
   async verify(req, res) {
@@ -285,12 +302,12 @@ const actions = {
     if (!row) throw new HttpError(403, 'Ce compte est désactivé.');
     await logSecurity(req, 'auth.email_verified', { userId });
     // Le lien prouve que la boîte appartient à la personne : il ouvre sa session (inscription par e-mail).
-    await createSession(req, res, userId, { method: 'verify' });
+    if ((await createSession(req, res, userId, { method: 'verify' })).mfa_required) return send(res, 200, { mfa_required: true });
     // Adresse désormais prouvée : le compte d'E-MAN PROD devient administrateur.
     await promoteOwner(req, userId);
     const user = await one(`select ${ME_COLS} from users where id = $1`, [userId]);
     const claimed = await claimGuestRequests(user);
-    send(res, 200, { user: publicUser(user), claimed });
+    send(res, 200, { user: publicUser(await effectiveUser(userId)), claimed });
   },
 
   async resend(req, res) {
@@ -312,10 +329,14 @@ const actions = {
       throw new HttpError(400, 'Mot de passe actuel incorrect.');
     }
     const pw = checkPassword(body.new_password, { email: user.email, name: user.full_name });
+    // Paramètre de sécurité : l'équipe reconfirme avec le code Google Authenticator.
+    mfa.assertRecentMfa(user);
     await query('update users set password_hash = $2, password_changed_at = now() where id = $1 returning id', [user.id, await hashPassword(pw)]);
-    // Les autres appareils sont déconnectés ; celui-ci reçoit une nouvelle session.
+    // Les autres appareils sont déconnectés ; celui-ci reçoit une nouvelle session (déjà vérifiée).
     await query('delete from sessions where user_id = $1 returning id', [user.id]);
-    await createSession(req, res, user.id);
+    // Plus aucun appareil de confiance : le code sera redemandé à la prochaine connexion.
+    await mfa.revokeDevices(user.id);
+    await createSession(req, res, user.id, { mfaDone: true, verifiedAt: user.mfa_verified_at ? new Date(user.mfa_verified_at).toISOString() : '' });
     await logSecurity(req, 'auth.password_changed', { userId: user.id, role: user.role });
     send(res, 200, { ok: true });
   },
@@ -333,6 +354,121 @@ const actions = {
     send(res, 200, await revokeMine(req, user, { id: v.uuid(body.id) }));
   },
 
+  // ------------------------------------------------------------ Double authentification
+  async 'mfa-verify'(req, res) {
+    const body = await readJson(req);
+    const c = await mfa.loadChallenge(readCookie(req, mfaCookie(req, mfa.CHALLENGE_COOKIE)));
+    if (!c) { const e = new HttpError(401, 'Cette étape a expiré. Reconnectez-vous.'); e.code = 'mfa_expired'; throw e; }
+    await rateLimit(`mfa:user:${c.user_id}`, 10, 60, 'Trop de codes essayés. Réessayez dans une heure, ou utilisez un code de récupération plus tard.');
+    const how = await mfa.verifyCode(c.user_id, body.code);
+    if (!how) {
+      const left = await mfa.failChallenge(c);
+      await logSecurity(req, 'auth.mfa_failed', { userId: c.user_id, data: { left } });
+      if (!left) {
+        appendCookie(res, cookie(req, mfaCookie(req, mfa.CHALLENGE_COOKIE), '', 0));
+        await notifyUser(c.user_id, { kind: 'security.alert', category: 'account', title: 'Codes incorrects sur votre compte', body: 'Plusieurs codes Google Authenticator incorrects ont été saisis après votre mot de passe. Si ce n’était pas vous, changez votre mot de passe.', link: '/espace?section=parametres' }).catch(() => {});
+        const e = new HttpError(401, 'Trop d’essais. Reconnectez-vous avec votre mot de passe.'); e.code = 'mfa_expired'; throw e;
+      }
+      throw new HttpError(401, `Code incorrect. ${left} essai${left > 1 ? 's' : ''} restant${left > 1 ? 's' : ''}.`);
+    }
+    await mfa.dropChallenge(c);
+    appendCookie(res, cookie(req, mfaCookie(req, mfa.CHALLENGE_COOKIE), '', 0));
+    const ua = String(req.headers['user-agent'] || '');
+    let deviceId = null;
+    if (body.remember !== false) {
+      const t = await mfa.trustDevice(c.user_id, ua, ipHash(req));
+      deviceId = t.id;
+      appendCookie(res, cookie(req, mfaCookie(req, mfa.TRUST_COOKIE), t.token, mfa.MFA.trustDays * 86400));
+    }
+    await createSession(req, res, c.user_id, { method: c.method, mfaDone: true, trustedDeviceId: deviceId });
+    const me = await one(`update users set last_login_at = now() where id = $1 returning ${ME_COLS}`, [c.user_id]);
+    await logSecurity(req, 'auth.login', { userId: me.id, role: me.role, data: { method: c.method, mfa: how, trusted: Boolean(deviceId) } });
+    // Alerte : nouvelle connexion de l'équipe depuis un appareil qui n'était pas de confiance.
+    await notifyUser(me.id, {
+      kind: 'security.new_login', category: 'account', title: 'Nouvelle connexion à votre compte',
+      body: `Connexion depuis ${mfa.deviceLabel(ua)}. Si ce n’était pas vous, révoquez l’appareil et changez votre mot de passe.`,
+      link: '/espace?section=parametres', email: 'security_alert', vars: { appareil: mfa.deviceLabel(ua) },
+    }).catch(() => {});
+    if (how === 'recovery') {
+      const left = await mfa.recoveryLeft(me.id);
+      await notifyUser(me.id, { kind: 'security.alert', category: 'account', title: 'Code de récupération utilisé', body: `Il vous reste ${left} code${left > 1 ? 's' : ''} de récupération.${left < 3 ? ' Créez-en de nouveaux dans Paramètres.' : ''}`, link: '/espace?section=parametres' }).catch(() => {});
+    }
+    send(res, 200, { user: publicUser(await effectiveUser(me.id)) });
+  },
+
+  async 'mfa-setup'(req, res) {
+    const user = await requireUser(req);
+    if (!mfa.isTeamRole(user.real_role || user.role)) throw new HttpError(403, 'La double authentification est réservée à l’équipe.');
+    if (user.mfa_enabled) throw new HttpError(409, 'La double authentification est déjà activée.');
+    await rateLimit(`mfa-setup:${user.id}`, 10, 60);
+    const secret = (await import('node:crypto')).randomBytes(20);
+    await query('update users set mfa_pending_enc = $2 where id = $1 returning id', [user.id, await mfa.seal(secret)]);
+    const key = mfa.base32(secret);
+    await logSecurity(req, 'auth.mfa_setup_started', { userId: user.id, role: user.real_role || user.role });
+    // Seule réponse qui contient le secret : pendant l'activation, pour la personne elle-même.
+    send(res, 200, { qr_svg: qrSvg(mfa.otpauthUri(key, user.email)), key: key.match(/.{1,4}/g).join(' '), account: user.email, issuer: mfa.MFA.issuer }, { 'Cache-Control': 'no-store' });
+  },
+
+  async 'mfa-enable'(req, res) {
+    const user = await requireUser(req);
+    const body = await readJson(req);
+    await rateLimit(`mfa-enable:${user.id}`, 10, 15, 'Trop d’essais. Réessayez dans 15 minutes.');
+    const row = await one('select mfa_pending_enc, mfa_enabled_at from users where id = $1', [user.id]);
+    if (row.mfa_enabled_at) throw new HttpError(409, 'La double authentification est déjà activée.');
+    if (!row.mfa_pending_enc) throw new HttpError(409, 'Recommencez l’activation : affichez un nouveau QR code.');
+    const step = mfa.checkTotp(await mfa.unseal(row.mfa_pending_enc), body.code);
+    if (step === null) throw new HttpError(400, 'Code incorrect. Vérifiez l’heure de votre téléphone et saisissez le code affiché maintenant.');
+    await query(`update users set mfa_secret_enc = mfa_pending_enc, mfa_pending_enc = null, mfa_enabled_at = now(), mfa_last_step = $2 where id = $1 returning id`, [user.id, step]);
+    const codes = await mfa.newRecoveryCodes(user.id);
+    await query('update sessions set mfa_verified_at = now() where id = $1 returning id', [user.session_id]);
+    await logSecurity(req, 'auth.mfa_enabled', { userId: user.id, role: user.real_role || user.role });
+    await notifyUser(user.id, { kind: 'security.alert', category: 'account', title: 'Double authentification activée', body: 'Votre compte est maintenant protégé par Google Authenticator.', link: '/espace?section=parametres' }).catch(() => {});
+    send(res, 200, { recovery_codes: codes, user: publicUser(await effectiveUser(user.id)) }, { 'Cache-Control': 'no-store' });
+  },
+
+  async 'mfa-confirm'(req, res) {
+    const user = await requireUser(req);
+    const body = await readJson(req);
+    await rateLimit(`mfa:user:${user.id}`, 10, 60, 'Trop de codes essayés. Réessayez dans une heure.');
+    const how = await mfa.verifyCode(user.id, body.code);
+    if (!how) { await logSecurity(req, 'auth.mfa_failed', { userId: user.id, data: { step_up: true } }); throw new HttpError(400, 'Code incorrect.'); }
+    await query('update sessions set mfa_verified_at = now() where id = $1 returning id', [user.session_id]);
+    await logSecurity(req, 'auth.mfa_step_up', { userId: user.id, role: user.role, data: { how } });
+    send(res, 200, { ok: true, valid_minutes: mfa.MFA.stepUpMinutes });
+  },
+
+  async 'mfa-recovery'(req, res) {
+    const user = await requireUser(req);
+    if (!user.mfa_enabled) throw new HttpError(409, 'Activez d’abord la double authentification.');
+    mfa.assertRecentMfa(user);
+    const codes = await mfa.newRecoveryCodes(user.id);
+    await logSecurity(req, 'auth.mfa_recovery_regenerated', { userId: user.id, role: user.role });
+    send(res, 200, { recovery_codes: codes }, { 'Cache-Control': 'no-store' });
+  },
+
+  async 'mfa-disable'(req, res) {
+    const user = await requireUser(req);
+    const body = await readJson(req);
+    if (!user.mfa_enabled) return send(res, 200, { ok: true });
+    if (mfa.mfaRequired() && mfa.isTeamRole(user.role)) throw new HttpError(409, 'La double authentification est obligatoire pour l’équipe : elle ne peut pas être désactivée. En cas de perte du téléphone, utilisez un code de récupération.');
+    await rateLimit(`mfa:user:${user.id}`, 10, 60, 'Trop de codes essayés. Réessayez dans une heure.');
+    if (!(await mfa.verifyCode(user.id, body.code))) throw new HttpError(400, 'Code incorrect.');
+    await query('update users set mfa_secret_enc = null, mfa_pending_enc = null, mfa_enabled_at = null, mfa_last_step = null where id = $1 returning id', [user.id]);
+    await query('delete from mfa_recovery_codes where user_id = $1 returning id', [user.id]);
+    await mfa.revokeDevices(user.id);
+    await logSecurity(req, 'auth.mfa_disabled', { userId: user.id, role: user.role });
+    await notifyUser(user.id, { kind: 'security.alert', category: 'account', title: 'Double authentification désactivée', body: 'Si ce n’était pas vous, changez votre mot de passe immédiatement.', link: '/espace?section=parametres' }).catch(() => {});
+    send(res, 200, { ok: true });
+  },
+
+  async 'device-revoke'(req, res) {
+    const user = await requireUser(req);
+    const body = await readJson(req);
+    const n = body.all === true ? await mfa.revokeDevices(user.id) : await mfa.revokeDevices(user.id, { id: v.uuid(body.id) });
+    await logSecurity(req, 'auth.device_revoked', { userId: user.id, role: user.role, data: { count: n, all: body.all === true } });
+    send(res, 200, { revoked: n, signed_out: !(await effectiveUser(user.id)) || !(await one('select 1 as ok from sessions where id = $1', [user.session_id])) });
+  },
+
   async 'google-unlink'(req, res) {
     const user = await requireUser(req);
     if (!user.has_password) throw new HttpError(409, 'Créez d’abord un mot de passe : sinon vous ne pourriez plus vous connecter.');
@@ -346,6 +482,17 @@ const GET_ACTIONS = {
   me: actions.me,
   status: actions.status,
   sessions: actions.sessions,
+  async mfa(req, res) {
+    const user = await requireUser(req);
+    const team = mfa.isTeamRole(user.real_role || user.role);
+    send(res, 200, {
+      team, enabled: Boolean(user.mfa_enabled), required: team && mfa.mfaRequired(), trust_days: mfa.MFA.trustDays,
+      recovery_left: user.mfa_enabled ? await mfa.recoveryLeft(user.id) : 0,
+      devices: team ? await mfa.listDevices(user.id) : [],
+      current_device: user.trusted_device_id || null,
+      verified_recently: Boolean(user.mfa_verified_at && Date.now() - Date.parse(user.mfa_verified_at) < mfa.MFA.stepUpMinutes * 60000),
+    }, { 'Cache-Control': 'no-store' });
+  },
   google: startGoogle,
   'google-callback': (req, res) => googleCallback(req, res, { onLogin: async (id) => claimGuestRequests(await one(`select ${ME_COLS} from users where id = $1`, [id])) }),
 };
@@ -359,7 +506,7 @@ export default handler({
   async POST(req, res) {
     const name = actionOf(req);
     const fn = actions[name];
-    if (!fn || name === 'me' || name === 'sessions' || name === 'status') throw new HttpError(404, 'Action inconnue.');
+    if (!fn || name === 'me' || name === 'sessions' || name === 'status' || name === 'mfa') throw new HttpError(404, 'Action inconnue.');
     return fn(req, res);
   },
 });

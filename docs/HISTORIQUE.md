@@ -1,5 +1,50 @@
 # Historique des versions et des vérifications
 
+## v4.0.0 — Messagerie privée, profils, présence, vocaux, notifications, Google Authenticator
+
+Cahier des charges « Restructuration des espaces client et administrateur ». Audit d'abord, puis
+réutilisation de l'existant (fil d'assistance, SSE, Push, Cloudinary, sessions) : aucun second système.
+
+- **Espaces réorganisés** : client (Tableau de bord, Messagerie, Mes devis, Mes commandes, Suivi des
+  demandes, Mes formations, Mes documents, Notifications, Mon profil, Paramètres) ; administrateur
+  (Tableau de bord, Gestion des clients, Messagerie, Gestion des devis, Gestion des commandes,
+  Notifications, Profil administrateur, Paramètres) + « Gestion du site » (outils existants
+  conservés). Anciennes adresses redirigées.
+- **Messagerie** : conversation privée par client, bleu clair (moi) / gris (l'autre), heures,
+  envoyé / reçu / lu, non lus, « écrit un message… », présence, historique progressif, photos,
+  documents, messages vocaux. Voir docs/MESSAGERIE-V4.md.
+- **Profils** : nom public, fonction, présentation de l'équipe visibles des clients ; profil du
+  client visible de l'équipe ; dernière activité masquable.
+- **Notifications** : invitation « Activer les notifications » (demande native seulement au clic,
+  états default / granted / denied, aide pour réactiver), message vocal, alertes de sécurité.
+- **Google Authenticator** obligatoire pour l'équipe en production, appareil de confiance 30 jours,
+  codes de récupération, code redemandé dans les cas prévus, appareils révocables, alertes.
+  Voir docs/DOUBLE-AUTHENTIFICATION.md.
+- **Mot de passe** : bouton « œil » pour l'afficher ou le masquer dans tous les formulaires.
+- Corrigés en route : le micro était interdit par l'en-tête Permissions-Policy (vocaux impossibles) ;
+  la politique de sécurité (CSP) bloquait la lecture audio ; un fichier non encore envoyé était
+  visible de l'équipe ; une conversation se rechargeait à chaque rafraîchissement du menu ; une
+  coupure réseau pouvait faire planter la page de la messagerie (erreur affichée comme un objet).
+- Vérifié : messagerie API 68/68 (dont compte base limité), Google Authenticator API 62/62 (dont
+  Google + code, mode production), vecteurs TOTP RFC 6238, clé de chiffrement 5/5, navigateur à deux
+  (client + admin, ordinateur, téléphone, tablette) 61/61, temps réel 8/8 (messages en moins d'une
+  seconde), Push 41/41 et 17/17, mode Vercel 10/10, SQL d'installation 20/20, non-régression complète.
+- Migration 012 (additive). Aucune nouvelle fonction Vercel (11/12).
+
+## v3.10.1 — Carrousel d'accueil : jusqu'à 10 photos
+
+- Diapositives 5 à 10 ajoutées dans « Images et bannières » (facultatives). Elles n'apparaissent sur l'accueil qu'une fois une photo ajoutée : jamais de diapositive vide. Leur légende sous le carrousel est la description saisie.
+- « Retirer la photo » la fait disparaître de l'accueil sans laisser de trou. Les diapositives 1 à 4 gardent leur visuel provisoire.
+- Téléphone : les traits du carrousel se partagent la largeur (10 tiennent dès 320 px), flèches de 44 px conservées.
+- Vérifié dans un vrai navigateur (p19/hero10.py, 15/15) et non-régression site, responsive, en-tête, espace et SEO.
+
+## v3.10.0 — Fichiers piégés : inspection du contenu et réencodage des photos
+
+- Photos du site (réalisations, photos du site, photos de profil) : réencodées par Cloudinary dès leur arrivée (transformation signée). Le fichier gardé est une copie propre : ce qui était caché dedans ou collé derrière disparaît, avec les métadonnées (position GPS). Les pièces jointes des clients gardent leur original exact pour l'impression.
+- Chaque fichier est relu en entier à la confirmation et inspecté (api/_lib/scan.js) : programme ou script caché dans une image, ZIP avec programme, double extension, autre archive, chemin « ../ », mot de passe, bombe de décompression ; Word/Excel/PowerPoint avec macros, objets intégrés ou modèle distant ; PDF/AI avec JavaScript (y compris caché dans un flux compressé ou sous un nom encodé), lancement de programme, fichiers joints ; EPS/AI avec commandes système ou fichiers.
+- Fichier refusé : effacé du stockage, marqué « refusé », jamais téléchargeable ; message clair au client ; entrée « security.upload_blocked » dans le journal de sécurité de l'administrateur.
+- Détails et limites (ce n'est pas un antivirus) : docs/AUDIT-SECURITE.md, section v3.10.0.
+
 ## v3.9.2 — Suite du scan Herozion (38 → 26 constats, 17 → 5 élevés)
 
 - Réponses de l'API : plus aucun `select *`, colonnes explicites partout (connexion, sessions, reçus, attestations). La réponse de connexion donne le profil public complet, sans hachage.

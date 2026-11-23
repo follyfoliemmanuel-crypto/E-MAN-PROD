@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AppContext } from './context.js';
-import { auth, space, DEMO } from './lib/api.js';
+import { auth, space, DEMO, setStepUpPrompt } from './lib/api.js';
+import { MfaLoginForm, StepUpForm } from './components/mfaForms.jsx';
 import { usePath, navigate, scrollToHash } from './lib/router.jsx';
 import { useSeo } from './lib/seo.js';
 import { MediaProvider } from './lib/media.jsx';
@@ -120,12 +121,14 @@ export default function App() {
     const verifyToken = params.get('verifier');
     const resetToken = params.get('reinitialiser');
     const google = params.get('connexion');
-    if (verifyToken || resetToken || google) navigate(window.location.pathname, { replace: true });
+    const mfaStep = params.get('mfa') === '1';
+    if (verifyToken || resetToken || google || mfaStep) navigate(window.location.pathname, { replace: true });
 
     (async () => {
       try {
         if (verifyToken) {
           const r = await auth.verify({ token: verifyToken });
+          if (r.mfa_required) { setModal({ type: 'mfa' }); return; }
           setUser(r.user);
           notify(r.claimed ? `Adresse confirmée. ${r.claimed} demande(s) ajoutée(s) à votre espace.` : 'Adresse e-mail confirmée.');
         } else {
@@ -133,6 +136,8 @@ export default function App() {
           setUser(r.user);
           setMethods({ google: Boolean(r.google), mail: Boolean(r.mail) });
           if (google === 'google' && r.user) notify('Vous êtes connecté avec Google.');
+          // Retour de Google pour un compte de l'équipe : code Google Authenticator demandé.
+          if (mfaStep && !r.user) setModal({ type: 'mfa' });
           // Lien « Me connecter » de l'e-mail envoyé à une adresse déjà inscrite.
           if (google === 'rappel' && !r.user) setModal({ type: 'auth', mode: 'login' });
           const GOOGLE_ERRORS = {
@@ -158,7 +163,14 @@ export default function App() {
     })();
   }, [notify]);
 
-  const closeModal = useCallback(() => setModal(null), []);
+  const closeModal = useCallback(() => {
+    setModal((m) => { m?.resolve?.(false); return null; });
+  }, []);
+  // Action sensible (équipe) : la fenêtre « confirmez avec votre code » s'ouvre, puis l'action reprend.
+  useEffect(() => {
+    setStepUpPrompt(() => new Promise((resolve) => setModal({ type: 'stepup', resolve })));
+    return () => setStepUpPrompt(null);
+  }, []);
 
   const ctx = useMemo(() => ({
     user,
@@ -195,7 +207,7 @@ export default function App() {
   };
 
   const { Page } = route;
-  const labels = { quote: 'Demander un devis', auth: modal?.mode === 'signup' ? 'Créer un compte' : 'Se connecter', password: 'Nouveau mot de passe' };
+  const labels = { quote: 'Demander un devis', auth: modal?.mode === 'signup' ? 'Créer un compte' : 'Se connecter', password: 'Nouveau mot de passe', mfa: 'Vérification en deux étapes', stepup: 'Confirmer avec votre code' };
 
   return (
     <AppContext.Provider value={ctx}>
@@ -224,10 +236,13 @@ export default function App() {
                   google={methods.google}
                   serverIssue={serverIssue}
                   onDone={onAuthenticated}
+                  onMfa={() => setModal({ type: 'mfa' })}
                   startDemo={() => onAuthenticated(auth.demoUser())}
                 />
               )}
-              {modal.type === 'password' && <NewPasswordForm token={modal.token} notify={notify} onDone={onAuthenticated} />}
+              {modal.type === 'password' && <NewPasswordForm token={modal.token} notify={notify} onDone={onAuthenticated} onMfa={() => setModal({ type: 'mfa' })} />}
+              {modal.type === 'mfa' && <MfaLoginForm notify={notify} onDone={onAuthenticated} onExpired={() => setModal({ type: 'auth', mode: 'login' })} />}
+              {modal.type === 'stepup' && <StepUpForm onDone={(ok) => { modal.resolve(ok); setModal(null); }} />}
             </>
           )}
         </Modal>

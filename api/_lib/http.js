@@ -225,7 +225,8 @@ export function handler(methods, { raw = [] } = {}) {
       }
       await fn(req, res);
     } catch (err) {
-      if (err instanceof HttpError) return send(res, err.status, { error: err.message });
+      // « code » : raison lisible par l'interface (ex. mfa_step_up), jamais un détail technique.
+      if (err instanceof HttpError) return send(res, err.status, { error: err.message, ...(/^[a-z_]{3,40}$/.test(err.code || '') ? { code: err.code } : {}) });
       // Donnée refusée par Postgres (format, nombre trop grand, date hors limites) : c'est une
       // erreur de saisie, pas une panne. Le détail technique n'est jamais renvoyé.
       const pg = PG_INPUT_ERRORS[err?.code];

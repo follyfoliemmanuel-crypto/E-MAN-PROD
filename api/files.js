@@ -65,7 +65,7 @@ export default handler({
 
   async GET(req, res) {
     const q = readQuery(req, {
-      limits: Q.flag, cron: Q.oneOf(['cleanup']), id: Q.id('Fichier'), inline: Q.flag, direct: Q.flag, info: Q.flag,
+      limits: Q.flag, cron: Q.oneOf(['cleanup']), id: Q.id('Fichier'), inline: Q.flag, direct: Q.flag, info: Q.flag, stream: Q.flag,
       // Lien du stockage local de développement (signé par le serveur).
       local: Q.oneOf(['get', 'put']), key: Q.text(200), type: Q.text(120), size: Q.text(15), name: Q.text(255), exp: Q.text(15), sig: Q.text(64),
     });
@@ -98,6 +98,30 @@ export default handler({
     if (!q.id) throw new HttpError(400, 'Fichier manquant.');
     const id = q.id;
     const actor = actorOf(await currentUser(req));
+    if (q.stream === '1') {
+      // Message vocal lu dans la bulle : octets servis par le site, avec lecture partielle (Range)
+      // pour avancer / reculer dans l'enregistrement.
+      const { data, mime } = await files.readAudio(actor, id);
+      const total = data.length;
+      const m = /^bytes=(\d*)-(\d*)$/.exec(String(req.headers.range || ''));
+      let start = 0; let end = total - 1; let status = 200;
+      if (m && (m[1] || m[2])) {
+        start = m[1] ? Number(m[1]) : Math.max(0, total - Number(m[2]));
+        end = m[1] && m[2] ? Math.min(Number(m[2]), total - 1) : total - 1;
+        if (start > end || start >= total) { res.statusCode = 416; res.setHeader('Content-Range', `bytes */${total}`); return res.end(); }
+        status = 206;
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+      }
+      res.statusCode = status;
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Length', String(end - start + 1));
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Disposition', 'inline');
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      return res.end(req.method === 'HEAD' ? undefined : data.subarray(start, end + 1));
+    }
     const url = await files.downloadUrl(actor, id, { inline: q.inline === '1', direct: q.direct === '1' });
     if (q.info === '1') return send(res, 200, { url });
     res.statusCode = 302;

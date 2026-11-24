@@ -184,3 +184,9 @@ Un fichier peut avoir l'apparence d'une photo ou d'un PDF tout en transportant a
   reconfirmé ; script serveur `npm run mfa:reset` en dernier recours. Jamais sur simple demande.
 - Vérifié : 62 contrôles API (dont Google + code et mode production), 12 contrôles TOTP, QR code
   décodé par OpenCV, parcours complet dans le navigateur.
+
+## v4.1 — Fichiers et messagerie
+- Contrôle d'intégrité ajouté (fin de fichier JPEG/PNG/WebP/PDF, structure Office, audio) : fichier abîmé refusé, sans être compté comme attaque. Tous les contrôles existants sont conservés.
+- Lecture des vocaux par `/api/files?stream=1` : mêmes droits que le téléchargement, audio uniquement, 10 Mo au plus, `nosniff`, CSP `sandbox`, cache privé. Les fichiers restent privés chez Cloudinary.
+- Envoi idempotent (`client_ref`, index unique par auteur) : aucun doublon possible côté base.
+- Relecture de secours (`chat=pulse`) limitée à 60 requêtes par minute et par personne.

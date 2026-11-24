@@ -65,7 +65,16 @@ export const VARIANTS = {
   gallery: 'c_limit,w_1600/f_auto,q_auto',
   thumb: 'c_fill,w_600,h_450/f_auto,q_auto',
   avatar: 'c_fill,g_face,w_256,h_256/f_auto,q_auto',
+  // Photos du site (carrousel, bannières) : une taille par écran. « c_limit » n'agrandit jamais une
+  // photo plus petite que la largeur demandée : pas de pixellisation ajoutée.
+  w480: 'c_limit,w_480/f_auto,q_auto',
+  w800: 'c_limit,w_800/f_auto,q_auto',
+  w1200: 'c_limit,w_1200/f_auto,q_auto',
+  w1600: 'c_limit,w_1600/f_auto,q_auto',
+  w2400: 'c_limit,w_2400/f_auto,q_auto:good',
+  w3200: 'c_limit,w_3200/f_auto,q_auto:good',
 };
+export const RESPONSIVE_WIDTHS = [480, 800, 1200, 1600, 2400, 3200];
 
 const IMAGE_FORMATS = ['jpg', 'png', 'webp'];
 export const resourceTypeOf = (ext) => (IMAGE_FORMATS.includes(ext) ? 'image' : 'raw');

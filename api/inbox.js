@@ -50,6 +50,12 @@ export default handler({
     }
     if (q.chat) {
       if (q.chat === 'threads') return send(res, 200, { threads: await chat.threads(actor, { search: q.q || '' }) });
+      if (q.chat === 'pulse') {
+        // Mode de secours (flux temps réel bloqué) : ce qui a changé depuis « since ».
+        await rateLimit(`pulse:${user.id}`, 60, 1, 'Trop de relectures. Réessayez dans un moment.');
+        const since = q.since ? s.parse(z.string().datetime({ offset: true, message: 'Date invalide.' }), q.since) : null;
+        return send(res, 200, await chat.pulse(actor, since));
+      }
       if (q.chat === 'unread') return send(res, 200, { unread: await chat.unreadCount(actor) });
       if (q.chat === 'team') return send(res, 200, await chat.teamProfiles());
       if (q.chat === 'profile') return send(res, 200, { profile: await chat.clientProfile(actor, s.parse(s.uuid('Client'), q.of)) });
@@ -105,6 +111,7 @@ export default handler({
         kind: s.oneOf(['text', 'file', 'voice'], 'Type de message').default('text'),
         file_ids: s.list(s.uuid('Fichier'), 'Fichiers', { max: 5 }).default([]),
         voice_ms: z.number().int().min(0).max(600000).optional().nullable(),
+        client_ref: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/, 'Référence de message invalide.').optional().nullable(),
       }), body);
       return send(res, 201, { message: await chat.postChat(actor, m.to || 'me', { ...m, name: user.full_name }) });
     }

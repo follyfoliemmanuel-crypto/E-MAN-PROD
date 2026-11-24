@@ -50,6 +50,51 @@ export async function onlineIds(ids) {
 /** Présence affichable : « dernière activité » seulement si la personne l'autorise. */
 const presence = (row, online) => ({ online, last_active_at: online || !row.show_last_seen ? null : row.last_active_at });
 
+// ------------------------------------------------------------------- Changements (temps réel et secours)
+const UTC_NOW = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+export const nowStamp = async () => (await one(`select ${UTC_NOW} as t`)).t;
+const chatSide = (user) => (user.role === 'client' ? 'client' : isTeam(user, 'support') ? 'team' : null);
+
+/** Un appareil de la personne est connecté : les messages qui lui sont destinés sont « reçus ». */
+export async function markDelivered(user) {
+  const side = chatSide(user);
+  if (side === 'client') await query(`update messages set delivered_at = now(), changed_at = now() where support_user_id = $1 and author_role = 'admin' and delivered_at is null returning id`, [user.id]);
+  else if (side === 'team') await query(`update messages set delivered_at = now(), changed_at = now() where support_user_id is not null and author_role = 'client' and delivered_at is null returning id`);
+}
+/** Conversations qui ont bougé depuis `since` (nouveau message, reçu, lu) : identifiants seulement. */
+export async function movedThreads(user, since) {
+  const side = chatSide(user);
+  if (!side || !since) return { threads: [], at: since };
+  const rows = await query(
+    `select support_user_id as id, to_char(max(changed_at) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at
+       from messages where changed_at > $1::timestamptz and support_user_id is not null ${side === 'client' ? 'and support_user_id = $2' : ''}
+      group by support_user_id limit 100`, side === 'client' ? [since, user.id] : [since]);
+  return { threads: rows.map((r) => r.id), at: rows.length ? rows.map((r) => r.at).sort().pop() : since };
+}
+/** « écrit un message… » visible par cette personne. */
+export async function typingFor(user) {
+  const side = chatSide(user);
+  if (!side) return [];
+  return query(
+    side === 'client'
+      ? `select t.thread_user_id as thread, coalesce(u.public_name, u.full_name) as name from typing t join users u on u.id = t.user_id
+          where t.thread_user_id = $1 and t.user_id <> $1 and t.until > now()`
+      : `select t.thread_user_id as thread, u.full_name as name from typing t join users u on u.id = t.user_id
+          where t.user_id = t.thread_user_id and t.until > now() limit 50`, side === 'client' ? [user.id] : []);
+}
+/**
+ * Relecture rapide (mode de secours quand le flux temps réel ne passe pas : réseau d'opérateur,
+ * proxy) : mêmes informations que le flux, en une requête légère.
+ */
+export async function pulse(user, since) {
+  const at = await nowStamp();
+  const unread = (await one('select count(*)::int as n from notifications where user_id = $1 and read_at is null', [user.id])).n;
+  if (!chatSide(user)) return { at, threads: [], typing: [], unread };
+  await markDelivered(user);
+  const moved = since ? await movedThreads(user, since) : { threads: [] };
+  return { at, threads: moved.threads, typing: await typingFor(user), unread };
+}
+
 // ------------------------------------------------------------------- Profils
 /** Profils publics de l'équipe, vus par les clients : jamais l'e-mail, le téléphone ni le rôle exact. */
 export async function teamProfiles() {
@@ -82,7 +127,7 @@ export async function clientProfile(actor, clientId) {
 }
 
 // ------------------------------------------------------------------- Messages
-const MSG_COLS = `m.id, m.author_id, m.author_role, m.kind, m.body, m.voice_ms, m.created_at, m.delivered_at, m.read_at,
+const MSG_COLS = `m.id, m.author_id, m.author_role, m.kind, m.body, m.voice_ms, m.created_at, m.delivered_at, m.read_at, m.client_ref,
   coalesce(u.public_name, u.full_name) as author_name, u.first_name as author_first_name, u.last_name as author_last_name,
   u.avatar_file_id as author_avatar,
   coalesce((select json_agg(json_build_object('id', f.id, 'original_name', f.original_name, 'mime_type', f.mime_type,
@@ -130,8 +175,14 @@ const preview = (kind, body, files) => (kind === 'voice' ? '🎤 Message vocal' 
 /**
  * @param {{body?: string, kind?: 'text'|'file'|'voice', file_ids?: string[], voice_ms?: number}} msg
  */
-export async function postChat(actor, who, { body = '', kind = 'text', file_ids: fileIds = [], voice_ms: voiceMs = null, name = null }) {
+export async function postChat(actor, who, { body = '', kind = 'text', file_ids: fileIds = [], voice_ms: voiceMs = null, name = null, client_ref: clientRef = null }) {
   const c = await conversationOf(actor, who);
+  // Même message renvoyé après une coupure : on rend celui déjà enregistré (aucun doublon,
+  // aucune seconde notification).
+  if (clientRef) {
+    const dup = await one(`select ${MSG_COLS} from messages m left join users u on u.id = m.author_id where m.author_id = $1 and m.client_ref = $2`, [actor.id, clientRef]);
+    if (dup) return { ...dup, duplicate: true };
+  }
   const text = String(body || '').trim();
   const ids = [...new Set(fileIds || [])];
   if (ids.length > 5) throw new HttpError(400, '5 fichiers au plus par message.');
@@ -155,9 +206,15 @@ export async function postChat(actor, who, { body = '', kind = 'text', file_ids:
   const role = c.side === 'client' ? 'client' : 'admin';
   const stored = finalKind === 'voice' ? 'Message vocal' : text || files.map((f) => f.original_name).join(', ').slice(0, 4000);
   const row = await one(
-    `insert into messages (support_user_id, author_id, author_role, body, kind, voice_ms)
-     values ($1, $2, $3, $4, $5, $6) returning id, created_at`,
-    [c.clientId, actor.id, role, stored, finalKind, finalKind === 'voice' ? Math.round(voiceMs) : null]);
+    `insert into messages (support_user_id, author_id, author_role, body, kind, voice_ms, client_ref)
+     values ($1, $2, $3, $4, $5, $6, $7)
+     on conflict (author_id, client_ref) where client_ref is not null do nothing
+     returning id, created_at`,
+    [c.clientId, actor.id, role, stored, finalKind, finalKind === 'voice' ? Math.round(voiceMs) : null, clientRef]);
+  if (!row) {
+    // Deux envois simultanés du même message : le second rend le premier.
+    return { ...(await one(`select ${MSG_COLS} from messages m left join users u on u.id = m.author_id where m.author_id = $1 and m.client_ref = $2`, [actor.id, clientRef])), duplicate: true };
+  }
   if (files.length) await query('update uploaded_files set message_id = $1 where id = any($2::uuid[]) returning id', [row.id, `{${ids.join(',')}}`]);
   await query('delete from typing where thread_user_id = $1 and user_id = $2 returning user_id', [c.clientId, actor.id]);
 
@@ -178,7 +235,8 @@ export async function postChat(actor, who, { body = '', kind = 'text', file_ids:
       body: short, link: `/espace?section=messagerie&client=${c.clientId}`, event: 'message_new',
     });
   }
-  return { id: row.id, created_at: row.created_at, kind: finalKind };
+  // Message complet renvoyé : l'interface l'affiche aussitôt comme « envoyé », sans tout relire.
+  return one(`select ${MSG_COLS} from messages m left join users u on u.id = m.author_id where m.id = $1`, [row.id]);
 }
 
 /** « écrit un message… » : valable 6 secondes, renouvelé tant que la personne tape. */

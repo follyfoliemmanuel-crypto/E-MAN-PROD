@@ -1,5 +1,10 @@
 # Historique des versions et des vérifications
 
+## v4.1.0 — Corrections : vocaux, barre de saisie, rapidité, fichiers, carrousel, responsive
+
+Rapport complet (causes, corrections, fichiers, tests, restant à faire) : docs/CORRECTIONS-V4.1.md.
+Migration 013 (additive) ; fichier prêt : db/mise-a-jour-v4.1.sql.
+
 ## v4.0.0 — Messagerie privée, profils, présence, vocaux, notifications, Google Authenticator
 
 Cahier des charges « Restructuration des espaces client et administrateur ». Audit d'abord, puis

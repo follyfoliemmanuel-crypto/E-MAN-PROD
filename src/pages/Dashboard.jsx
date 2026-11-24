@@ -8,6 +8,7 @@ import { MfaPanel, MfaGate } from './space/mfa.jsx';
 import { RequestTimeline, PublicProfileForm, PresencePrivacy } from './space/extras.jsx';
 import { NotifyInvite } from './space/push.jsx';
 import { onChat } from '../lib/live.js';
+import { FocusEditor } from './space/focus.jsx';
 import { MEDIA_SLOTS, PLACEHOLDERS } from '../config.js';
 import { useCatalog } from '../lib/catalog.jsx';
 import { Avatar } from '../components/Avatar.jsx';
@@ -83,6 +84,13 @@ export default function Dashboard() {
     // « Profil administrateur » pour l'administrateur ; un collaborateur voit « Mon profil ».
     .map((s) => (s[0] === 'profil' && !isAdmin ? ['profil', 'Mon profil', ...s.slice(2)] : s));
   const current = sections.find(([k]) => k === loc.section)?.[0] || sections[0][0];
+  // Rubrique et espace notés sur la page : le bouton WhatsApp flottant s'efface là où il gênerait
+  // (messagerie, espace de l'équipe).
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.spaceSection = current; root.dataset.space = isClient ? 'client' : 'team';
+    return () => { delete root.dataset.spaceSection; delete root.dataset.space; };
+  }, [current, isClient]);
   // Messages non lus (menu « Messagerie »), tenus à jour en temps réel.
   const [chatUnread, setChatUnread] = useState(0);
   const refreshChat = useCallback(() => { if (!user || DEMO) return; import('../lib/api.js').then(({ chatApi }) => chatApi.unread()).then((r) => setChatUnread(r.unread)).catch(() => {}); }, [user?.id]);
@@ -206,7 +214,7 @@ function Section({ section, params, user, setUser, notify, go, can, isAdmin, isC
       return (
         <>
           <SectionHead title="Messagerie" lead={isClient ? 'Votre conversation privée avec l’équipe E-MAN PROD : messages, photos, documents et messages vocaux.' : 'Les conversations privées avec vos clients, les plus récentes en premier.'} />
-          {isClient ? <ClientMessaging user={user} notify={notify} onChanged={() => { refreshChat(); refreshUnread(); }} />
+          {isClient ? <ClientMessaging user={user} notify={notify} onBack={() => go('accueil')} onChanged={() => { refreshChat(); refreshUnread(); }} />
             : <ChatInbox user={user} notify={notify} params={params} go={go} onChanged={() => { refreshChat(); refreshUnread(); }} />}
         </>
       );
@@ -533,6 +541,7 @@ function MediaRow({ def, current, onSaved, notify }) {
           {custom && <button type="button" className="btn btnGhost btnSmall" disabled={busy} onClick={reset}>{def.optional ? 'Retirer la photo' : 'Revenir au visuel provisoire'}</button>}
         </div>
       </form>
+      {custom && <div className="mediaFocus"><FocusEditor slot={def.slot} current={current} notify={notify} onSaved={onSaved} /></div>}
     </li>
   );
 }

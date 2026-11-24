@@ -21,7 +21,7 @@ export function MediaProvider({ children }) {
       const d = defaults[slot];
       const fb = d?.fallback || fallback;
       const c = custom[slot];
-      if (c) return { url: c.url, alt: c.alt || d?.alt || '', placeholder: false, fallback: fb };
+      if (c) return { url: c.url, alt: c.alt || d?.alt || '', placeholder: false, fallback: fb, srcset: c.srcset, focus: c.focus, focus_mobile: c.focus_mobile };
       if (fb) return { url: fb, alt: d?.alt || '', placeholder: true, fallback: fb };
       return null;
     },

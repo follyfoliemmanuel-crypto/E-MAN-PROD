@@ -29,16 +29,24 @@ export function SmartImage({ slot, fallback, className = '', eager = false, size
   }, [src]);
 
   if (!media) return null;
+  // Photo envoyée depuis l'admin : le navigateur choisit la taille adaptée à l'écran (léger sur
+  // téléphone, net sur grand écran) ; point de cadrage choisi dans l'admin (sinon centré).
+  const srcSet = src === media.url && media.srcset?.length ? media.srcset.map(([w, u]) => `${u} ${w}w`).join(', ') : undefined;
+  const style = {
+    ...(media.focus ? { '--focus': media.focus } : {}),
+    ...(media.focus_mobile ? { '--focus-m': media.focus_mobile } : {}),
+  };
   return (
-    <span className={'smartImg ' + className} data-loaded={loaded}>
+    <span className={'smartImg ' + className} data-loaded={loaded} style={style}>
       <img
         ref={ref}
         src={src}
+        srcSet={srcSet}
         alt={media.placeholder ? '' : media.alt}
         loading={eager ? 'eager' : 'lazy'}
         fetchpriority={eager ? 'high' : undefined}
         decoding="async"
-        sizes={sizes}
+        sizes={srcSet ? sizes || '100vw' : sizes}
         onLoad={() => setLoaded(true)}
         onError={() => { if (src !== media.fallback) setSrc(media.fallback); }}
       />

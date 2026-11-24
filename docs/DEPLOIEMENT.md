@@ -116,3 +116,10 @@ Le code suppose des fonctions serverless Node au format Vercel (`api/*.js`, `exp
 4. **À vérifier sur vos propres appareils** (impossible à tester ici) : scanner le QR code avec votre
    téléphone ; recevoir une notification Push sur le téléphone ; enregistrer un message vocal sur
    iPhone (Safari) et sur Android (Chrome).
+
+## Passage à la v4.1 (corrections messagerie, carrousel)
+
+1. Neon → SQL Editor → coller `db/mise-a-jour-v4.1.sql` → Run (migration 013, additive). La base doit
+   être en 012 (v4.0) : sinon le fichier s'arrête sans rien modifier.
+2. Déployer sur Vercel. Aucune nouvelle variable.
+3. Dans « Images et bannières », bouton « Cadrage » sur chaque photo dont le sujet n'est pas centré.

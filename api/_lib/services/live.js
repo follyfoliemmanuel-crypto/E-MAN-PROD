@@ -14,7 +14,7 @@
 import { z } from 'zod';
 import { query, one } from '../db.js';
 import { can } from '../auth.js';
-import { touchPresence, dropPresence, ONLINE_SECONDS } from './chat.js';
+import { touchPresence, dropPresence, ONLINE_SECONDS, markDelivered, movedThreads, typingFor, nowStamp } from './chat.js';
 
 /** Dernier identifiant reçu par le navigateur (en-tête Last-Event-ID) : « date|uuid », 120 caractères au plus. */
 const LastEventId = z.string().max(120).regex(/^[0-9T:.Z+-]*(\|[0-9a-f-]{36})?$/i).catch('');
@@ -30,7 +30,7 @@ export const LIVE = {
   // avant la précédente lue) est quand même vue. Les doublons sont écartés par identifiant.
   overlapSeconds: 30,
   // Messagerie : statuts, « écrit… » et présence relus tous les 2 tours (≈ 2,4 s).
-  signalEvery: 2,
+  signalEvery: 1,
   presenceEvery: 4,
   presenceTouchMs: 20000,
 };
@@ -66,7 +66,9 @@ export async function streamNotifications(req, res, user, { cursor: rawCursor, c
   res.setHeader('X-Content-Type-Options', 'nosniff');
   const write = (chunk) => { if (!closed) { res.write(chunk); res.flush?.(); } };
   // retry : délai de reconnexion conseillé au navigateur.
-  write(`retry: 1500\n: E-MAN PROD temps réel\n\n`);
+  // 2 Ko de commentaire au début : certains proxys d'opérateurs gardent le début d'un flux en
+  // mémoire tampon ; ce bloc les oblige à transmettre tout de suite.
+  write(`retry: 1500\n: E-MAN PROD temps réel${' '.repeat(2048)}\n\n`);
 
   const started = Date.now();
   let lastBeat = started;
@@ -78,34 +80,19 @@ export async function streamNotifications(req, res, user, { cursor: rawCursor, c
   const isClient = user.role === 'client';
   const support = !isClient && can(user, 'support');
   const chatOn = isClient || support;
-  let chatSince = (await one(`select to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as t`)).t;
+  let chatSince = await nowStamp();
   let typingKey = '';
   let presenceKey = '';
   let lastTouch = 0;
   let tick = 0;
   const signals = async () => {
-    // Reçu : un appareil de la personne est connecté, donc les messages qui lui sont destinés lui parviennent.
-    if (isClient) {
-      await query(`update messages set delivered_at = now(), changed_at = now() where support_user_id = $1 and author_role = 'admin' and delivered_at is null returning id`, [user.id]);
-    } else {
-      await query(`update messages set delivered_at = now(), changed_at = now() where support_user_id is not null and author_role = 'client' and delivered_at is null returning id`);
+    await markDelivered(user);
+    const moved = await movedThreads(user, chatSince);
+    if (moved.threads.length) {
+      chatSince = moved.at;
+      write(`event: chat\ndata: ${JSON.stringify({ threads: moved.threads })}\n\n`);
     }
-    // Conversations qui ont bougé (nouveau message, reçu, lu) : seulement leurs identifiants.
-    const moved = await query(
-      `select support_user_id as id, to_char(max(changed_at) at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at
-         from messages where changed_at > $1::timestamptz and support_user_id is not null ${isClient ? 'and support_user_id = $2' : ''}
-        group by support_user_id limit 100`, isClient ? [chatSince, user.id] : [chatSince]);
-    if (moved.length) {
-      chatSince = moved.map((m) => m.at).sort().pop();
-      write(`event: chat\ndata: ${JSON.stringify({ threads: moved.map((m) => m.id) })}\n\n`);
-    }
-    // « écrit un message… » : côté client, l'équipe qui écrit ; côté équipe, les clients qui écrivent.
-    const typing = await query(
-      isClient
-        ? `select t.thread_user_id as thread, coalesce(u.public_name, u.full_name) as name from typing t join users u on u.id = t.user_id
-            where t.thread_user_id = $1 and t.user_id <> $1 and t.until > now()`
-        : `select t.thread_user_id as thread, u.full_name as name from typing t join users u on u.id = t.user_id
-            where t.user_id = t.thread_user_id and t.until > now() limit 50`, isClient ? [user.id] : []);
+    const typing = await typingFor(user);
     const key = typing.map((t) => `${t.thread}:${t.name}`).sort().join('|');
     if (key !== typingKey) { typingKey = key; write(`event: typing\ndata: ${JSON.stringify({ typing })}\n\n`); }
   };
@@ -155,7 +142,9 @@ export async function streamNotifications(req, res, user, { cursor: rawCursor, c
     if (chatOn && tick % LIVE.presenceEvery === 0) await presenceSignal().catch(() => {});
     const now = Date.now();
     if (now - lastTouch >= LIVE.presenceTouchMs) await touch().catch(() => {});
-    if (now - lastBeat >= LIVE.heartbeatMs) { write(`: ping\n\n`); lastBeat = now; }
+    // Signe de vie VISIBLE par le navigateur (un commentaire ne l'est pas) : il sait ainsi qu'une
+    // connexion silencieuse est bloquée et la relance.
+    if (now - lastBeat >= LIVE.heartbeatMs) { write(`event: ping\ndata: {}\n\n`); lastBeat = now; }
     if (now - lastCheck >= LIVE.sessionCheckMs) {
       lastCheck = now;
       // Session fermée (déconnexion, mot de passe changé) ou compte désactivé : le flux s'arrête.

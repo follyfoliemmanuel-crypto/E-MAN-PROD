@@ -11,7 +11,7 @@
 // lisibles les anciens fichiers (S3, local) jusqu'à leur migration vérifiée.
 import { randomUUID } from 'node:crypto';
 import { query, one } from '../db.js';
-import { scanContent } from '../scan.js';
+import { scanContent, integrity } from '../scan.js';
 import { HttpError } from '../http.js';
 import { logActivity, isTeam } from '../activity.js';
 import { providerFor, providerOf, logStorageError, storageStatus } from '../storage.js';
@@ -241,6 +241,8 @@ export async function confirmUpload(actor, id) {
   if (!problem) {
     const data = await guarded('scan', f, () => store.read({ ...f, remote_format: stat.format, remote_version: stat.version }));
     if (!data) problem = 'il n’a pas pu être relu pour vérification';
+    // Fichier abîmé ou incomplet (envoi coupé…) : simple refus, ce n'est pas une menace.
+    else if (data.length < 16 || integrity(data, key)) problem = `${data.length < 16 ? 'fichier trop court pour être valide' : integrity(data, key)} — renvoyez le fichier d’origine`;
     else if ((threat = scanContent(data, key))) problem = threat;
   }
   if (problem) {
@@ -301,6 +303,24 @@ export async function downloadUrl(actor, id, { inline = false, direct = false } 
   // Seules les images s'affichent dans le navigateur ; le reste est toujours téléchargé.
   const show = inline && (f.mime_type.startsWith('image/') || f.mime_type.startsWith('audio/'));
   return guarded('download', f, async () => providerOf(f).downloadUrl(f, { filename: f.original_name, inline: show, direct, variant: f.purpose === 'avatar' ? 'avatar' : 'gallery' }));
+}
+
+/**
+ * Lecture d'un message vocal DANS la conversation : le fichier passe par le site (mêmes droits que
+ * le téléchargement), avec son vrai type audio et sans « téléchargement forcé ». Cloudinary sert les
+ * fichiers privés comme des téléchargements depuis un autre domaine : le navigateur ne pouvait pas
+ * les lire dans la bulle. Réservé à l'audio, 10 Mo au plus.
+ */
+export const STREAM_MAX = 10 * 1024 * 1024;
+export async function readAudio(actor, id) {
+  const f = await loadFile(id);
+  if (!(await canRead(actor, f))) throw new HttpError(404, 'Fichier introuvable.');
+  if (f.status !== 'ready') throw new HttpError(409, 'Ce fichier n’est pas encore disponible.');
+  if (!f.mime_type.startsWith('audio/')) throw new HttpError(415, 'Lecture directe réservée aux messages vocaux.');
+  if (Number(f.size_bytes) > STREAM_MAX) throw new HttpError(413, 'Enregistrement trop long pour la lecture directe.');
+  const data = await guarded('stream', f, () => providerOf(f).read(f));
+  if (!data) throw new HttpError(404, 'Fichier introuvable.');
+  return { data, mime: f.mime_type, name: f.original_name };
 }
 
 /**

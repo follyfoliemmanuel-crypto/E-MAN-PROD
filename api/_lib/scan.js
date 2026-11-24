@@ -224,6 +224,48 @@ function scanPostScript(buf) {
   return what ? `le fichier contient du ${what}` : null;
 }
 
+// --- Fichiers corrompus ou incomplets (envoi coupé, fichier abîmé) ----------------------------
+/** Structure minimale attendue pour chaque format : un fichier tronqué ou abîmé est refusé. */
+export function integrity(buf, format) {
+  const text = (a, b) => buf.toString('latin1', a, b);
+  const tail = (n) => buf.toString('latin1', Math.max(0, buf.length - n));
+  switch (format) {
+    case 'jpg': {
+      // Fin d'image (EOI) trouvée en suivant la structure.
+      let p = 2;
+      while (p + 4 <= buf.length && buf[p] === 0xff && buf[p + 1] !== 0xda) {
+        if (buf[p + 1] === 0xff) { p++; continue; }
+        p += 2 + buf.readUInt16BE(p + 2);
+      }
+      for (let i = p; i + 1 < buf.length; i++) if (buf[i] === 0xff && buf[i + 1] === 0xd9) return null;
+      return 'image incomplète ou abîmée (fin d’image absente)';
+    }
+    case 'png': {
+      let p = 8;
+      while (p + 12 <= buf.length) {
+        const len = buf.readUInt32BE(p); const type = text(p + 4, p + 8);
+        if (!/^[A-Za-z]{4}$/.test(type)) return 'image abîmée (structure PNG invalide)';
+        p += 12 + len;
+        if (type === 'IEND') return null;
+      }
+      return 'image incomplète (fin du PNG absente)';
+    }
+    case 'webp': return text(0, 4) === 'RIFF' && text(8, 12) === 'WEBP' && 8 + buf.readUInt32LE(4) <= buf.length + 1 ? null : 'image WebP incomplète ou abîmée';
+    case 'pdf': case 'ai': {
+      if (format === 'ai' && text(0, 5) !== '%PDF-') return null; // Illustrator PostScript : vérifié comme EPS
+      return /%%EOF/.test(tail(4096)) ? null : 'PDF incomplet ou abîmé (fin de document absente)';
+    }
+    case 'docx': case 'xlsx': case 'pptx': {
+      try { if (!zipEntries(buf).some((e) => e.name === '[Content_Types].xml')) return 'document Office invalide (structure absente)'; } catch { return 'document Office abîmé'; }
+      return null;
+    }
+    case 'webm': return buf.length > 64 && /webm|matroska/.test(text(0, 64)) ? null : 'enregistrement audio abîmé';
+    case 'ogg': return /OpusHead|vorbis/.test(text(0, 128)) ? null : 'enregistrement audio abîmé';
+    case 'm4a': return buf.includes(Buffer.from('moov')) ? null : 'enregistrement audio incomplet';
+    default: return null;
+  }
+}
+
 /**
  * @param {Buffer} buf  contenu complet du fichier
  * @param {string} format  clé de FORMATS (jpg, png, webp, pdf, ai, eps, psd, cdr, zip, docx, xlsx, pptx)
@@ -231,6 +273,9 @@ function scanPostScript(buf) {
  */
 export function scanContent(buf, format) {
   if (!Buffer.isBuffer(buf) || !buf.length) return 'fichier vide';
+  if (buf.length < 16) return 'fichier trop court pour être valide';
+  const broken = integrity(buf, format);
+  if (broken) return broken;
   const isZip = buf.readUInt32LE(0) === 0x04034b50;
   switch (format) {
     case 'jpg': case 'png': case 'webp': return scanImage(buf, format);

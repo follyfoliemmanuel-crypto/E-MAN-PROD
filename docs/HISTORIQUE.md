@@ -1,5 +1,17 @@
 # Historique des versions et des vérifications
 
+## v4.1.1 — Bannière : une photo ne disparaît plus ; remise à zéro avant la production
+
+- Bannière et images du site : quand une taille adaptée à l'écran est refusée par le navigateur ou
+  par Cloudinary, l'image se rabat sur son adresse d'origine (celle d'avant la v4.1), puis sur le
+  visuel par défaut ; une diapositive sans aucune image affichable est retirée du carrousel (plus
+  de bannière vide). La console du navigateur indique l'adresse refusée (diagnostic).
+  Tests : pannes Cloudinary simulées sur 4 écrans (19/19), carrousel 33/33, bannière 10 photos 15/15,
+  navigateur phases 5 et 6, responsive 0 problème.
+- db/reinitialisation-avant-production.sql : vide l'activité de test (commandes, devis, messages,
+  notifications, inscriptions, journaux, numérotation) et garde le site, l'équipe et les comptes.
+  Testé sur une copie : parcours devis → commande (CMD-2026-00001) et messagerie fonctionnent ensuite.
+
 ## v4.1.0 — Corrections : vocaux, barre de saisie, rapidité, fichiers, carrousel, responsive
 
 Rapport complet (causes, corrections, fichiers, tests, restant à faire) : docs/CORRECTIONS-V4.1.md.

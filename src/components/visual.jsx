@@ -12,26 +12,43 @@ const reduceMotion = () => typeof window !== 'undefined' && window.matchMedia?.(
 // Image d'un emplacement : fond coloré pendant le chargement, fondu à
 // l'arrivée, retour au visuel provisoire si l'adresse ne répond pas.
 // ---------------------------------------------------------------------------
-export function SmartImage({ slot, fallback, className = '', eager = false, sizes }) {
+export function SmartImage({ slot, fallback, className = '', eager = false, sizes, onFail }) {
   const media = useMedia().get(slot, fallback);
-  const [src, setSrc] = useState(media?.url);
+  // Essais successifs, pour qu'une photo ne disparaisse jamais :
+  //   0 : taille adaptée à l'écran (srcset)   1 : adresse unique de la photo (comme avant la v4.1)
+  //   2 : visuel par défaut de l'emplacement   3 : rien ne s'affiche → l'emplacement est signalé (onFail)
+  const [stage, setStage] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const ref = useRef(null);
+  const srcsetKey = media?.srcset?.length ? media.srcset[0][1] : '';
 
   useEffect(() => {
-    setSrc(media?.url);
+    setStage(0);
     setLoaded(false);
-  }, [media?.url]);
+  }, [media?.url, srcsetKey]);
 
+  const hasSet = !!media?.srcset?.length;
+  const src = !media ? undefined : stage <= 1 ? media.url : media.fallback;
   // Image déjà en cache : l'évènement load a pu partir avant l'hydratation.
   useEffect(() => {
     if (ref.current?.complete && ref.current.naturalWidth > 0) setLoaded(true);
-  }, [src]);
+  }, [src, stage]);
 
-  if (!media) return null;
+  const fail = () => {
+    setLoaded(false);
+    if (stage === 0 && hasSet) {
+      // Trace pour le diagnostic (console du navigateur) : quelle taille a été refusée.
+      console.warn(`[E-MAN PROD] photo « ${slot} » : taille adaptée refusée, repli sur l’adresse d’origine.`, ref.current?.currentSrc || '');
+      setStage(1); return;
+    }
+    if (stage <= 1 && media.fallback && media.fallback !== media.url) { setStage(2); return; }
+    setStage(3); onFail?.(slot);
+  };
+
+  if (!media || stage === 3 || !src) return null;
   // Photo envoyée depuis l'admin : le navigateur choisit la taille adaptée à l'écran (léger sur
   // téléphone, net sur grand écran) ; point de cadrage choisi dans l'admin (sinon centré).
-  const srcSet = src === media.url && media.srcset?.length ? media.srcset.map(([w, u]) => `${u} ${w}w`).join(', ') : undefined;
+  const srcSet = stage === 0 && hasSet ? media.srcset.map(([w, u]) => `${u} ${w}w`).join(', ') : undefined;
   const style = {
     ...(media.focus ? { '--focus': media.focus } : {}),
     ...(media.focus_mobile ? { '--focus-m': media.focus_mobile } : {}),
@@ -39,6 +56,7 @@ export function SmartImage({ slot, fallback, className = '', eager = false, size
   return (
     <span className={'smartImg ' + className} data-loaded={loaded} style={style}>
       <img
+        key={stage}
         ref={ref}
         src={src}
         srcSet={srcSet}
@@ -47,8 +65,9 @@ export function SmartImage({ slot, fallback, className = '', eager = false, size
         fetchpriority={eager ? 'high' : undefined}
         decoding="async"
         sizes={srcSet ? sizes || '100vw' : sizes}
+        data-stage={stage}
         onLoad={() => setLoaded(true)}
-        onError={() => { if (src !== media.fallback) setSrc(media.fallback); }}
+        onError={fail}
       />
     </span>
   );
@@ -83,8 +102,15 @@ export function Reveal({ as: Tag = 'div', children, delay = 0, ...rest }) {
 // navigation au clavier dans ses commandes et quand l'onglet est en arrière-plan.
 // Flèches, points et glissement tactile restent disponibles.
 // ---------------------------------------------------------------------------
-export function HeroCarousel({ slides, interval = 6500, children }) {
-  const [index, setIndex] = useState(0);
+export function HeroCarousel({ slides: allSlides, interval = 6500, children }) {
+  // Une diapositive dont la photo ne peut pas s'afficher (et sans visuel par défaut) est retirée :
+  // jamais d'image vide dans la bannière.
+  const [broken, setBroken] = useState(() => new Set());
+  const onFail = useCallback((slot) => setBroken((b) => (b.has(slot) ? b : new Set(b).add(slot))), []);
+  const kept = allSlides.filter((s) => !broken.has(s.slot));
+  const slides = kept.length ? kept : allSlides.slice(0, 1);
+  const [rawIndex, setIndex] = useState(0);
+  const index = rawIndex % slides.length;
   const [focused, setFocused] = useState(false); // navigation au clavier dans les commandes
   const [tick, setTick] = useState(0);           // relance du minuteur (onglet caché puis rouvert)
   const startX = useRef(null);
@@ -134,7 +160,7 @@ export function HeroCarousel({ slides, interval = 6500, children }) {
             aria-roledescription="diapositive"
             aria-label={`${i + 1} sur ${count} : ${s.theme}`}
           >
-            <SmartImage slot={s.slot} eager={i === 0} className="heroPhoto" />
+            <SmartImage slot={s.slot} eager={i === 0} className="heroPhoto" onFail={onFail} />
           </div>
         ))}
         <div className="heroShade" aria-hidden="true" />

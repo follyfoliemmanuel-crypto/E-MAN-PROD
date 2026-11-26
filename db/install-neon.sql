@@ -1,5 +1,5 @@
 -- =============================================================================
--- E-MAN PROD v4.0.0 : installation ou mise à jour de la base de données
+-- E-MAN PROD v4.1.3 : installation ou mise à jour de la base de données
 -- Fichier généré par « npm run db:sql » à partir de db/migrations : ne pas modifier à la main.
 --
 -- Utilisation (Neon) : console.neon.tech → votre projet → SQL Editor → coller tout
@@ -1483,6 +1483,47 @@ end
 $install$;
 
 -- -----------------------------------------------------------------------------
+-- Migration 014_rgpd_consent_indexes.sql
+-- -----------------------------------------------------------------------------
+do $install$
+declare applied text;
+begin
+  select checksum into applied from schema_migrations where version = '014';
+  if applied is null then
+    execute $m014$
+-- 014 — Audit avant production (v4.2.0). Migration ADDITIVE uniquement : aucune donnée supprimée.
+-- 1. Preuve du consentement : date à laquelle la case « J’accepte… » a été cochée (formulaires publics).
+-- 2. Index sur des clés étrangères utilisées dans les recherches et suppressions.
+-- 3. Clé primaire sur rate_events (compteurs anti-abus, purgés après 2 jours).
+
+alter table quotes add column if not exists consent_at timestamptz;
+alter table enrollments add column if not exists consent_at timestamptz;
+
+create index if not exists site_media_file_idx on site_media (file_id) where file_id is not null;
+create index if not exists mfa_challenges_user_idx on mfa_challenges (user_id);
+create index if not exists typing_user_idx on typing (user_id);
+create index if not exists sessions_trusted_device_idx on sessions (trusted_device_id) where trusted_device_id is not null;
+create index if not exists portfolio_items_image_idx on portfolio_items (image_file_id) where image_file_id is not null;
+
+alter table rate_events add column if not exists id bigint generated always as identity;
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conrelid = 'rate_events'::regclass and contype = 'p') then
+    alter table rate_events add constraint rate_events_pkey primary key (id);
+  end if;
+end $$;
+$m014$;
+    insert into schema_migrations (version, name, checksum) values ('014', 'rgpd_consent_indexes', 'dd4621af94ee2c8180554576b46e283283f76e2a64fa7b01f29ab52e840f61f0');
+    raise notice 'Migration 014_rgpd_consent_indexes.sql appliquée.';
+  elsif applied <> 'dd4621af94ee2c8180554576b46e283283f76e2a64fa7b01f29ab52e840f61f0' then
+    raise exception 'La migration 014_rgpd_consent_indexes.sql a été modifiée après application : rien n''a été changé.';
+  else
+    raise notice 'Migration 014_rgpd_consent_indexes.sql déjà appliquée.';
+  end if;
+end
+$install$;
+
+-- -----------------------------------------------------------------------------
 -- Contenu de départ (modifiable ensuite dans l'espace administrateur).
 -- « on conflict do nothing » : un élément déjà présent n'est jamais modifié.
 -- -----------------------------------------------------------------------------
@@ -1589,7 +1630,7 @@ insert into site_settings (key, value) values ('cars', '{"title":"E-MAN CARS","t
 
 commit;
 
--- Vérification : doit afficher les migrations 001 à 013.
+-- Vérification : doit afficher les migrations 001 à 014.
 select version, name, applied_at from schema_migrations order by version;
 
 -- -----------------------------------------------------------------------------

@@ -15,6 +15,7 @@
 //   GET ?team=1 · GET ?security=1        admin : équipe et permissions · journal de sécurité
 //   POST {action: 'role', user_id, role, permissions}   admin : rôle et permissions d'un compte
 //   POST {action: 'disable', user_id, disabled} · {action: 'revoke_sessions', user_id}   admin
+//   POST {action: 'anonymize', user_id, confirm: 'ANONYMISER'}   admin + MFA récent : droit à l'effacement d'un client
 //   GET ?push=1                          mes appareils abonnés aux notifications push + clé publique VAPID
 //   POST {action: 'push_subscribe', subscription} · {action: 'push_unsubscribe', id | endpoint} · {action: 'push_test'}
 import { z } from 'zod';
@@ -189,6 +190,13 @@ export default handler({
       await logSecurity(req, 'auth.mfa_reset_by_admin', { userId: admin.id, role: 'admin', data: { target: id } });
       await notifyUser(id, { kind: 'security.alert', category: 'account', title: 'Double authentification réinitialisée', body: 'Un administrateur a réinitialisé votre Google Authenticator. Reconnectez-vous et activez-le de nouveau.', link: '/espace?section=parametres' }).catch(() => {});
       return send(res, 200, { ok: true });
+    }
+    if (body.action === 'anonymize') {
+      // Droit à l'effacement d'un client : administrateur, code Google Authenticator récent, confirmation écrite.
+      const admin = await requireAdmin(req);
+      assertRecentMfa(admin);
+      const p = s.parse(z.object({ user_id: s.uuid('Client'), confirm: z.literal('ANONYMISER', { errorMap: () => ({ message: 'Tapez ANONYMISER pour confirmer.' }) }) }), body);
+      return send(res, 200, await clients.anonymizeClient(actorOf(admin), p.user_id));
     }
     if (body.action === 'role' || body.action === 'disable' || body.action === 'revoke_sessions') {
       const admin = await requireAdmin(req);

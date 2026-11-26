@@ -14,6 +14,12 @@ import * as s from './_lib/schemas.js';
 import * as quotes from './_lib/services/quotes.js';
 import { quotePdf, sendPdf } from './_lib/pdf.js';
 
+/** Faux accusé de réception pour un robot piégé (même forme qu'une vraie réponse). */
+const fakeReceipt = (prefix) => {
+  const ref = `${prefix}-${new Date().getFullYear()}-${String(Math.floor(10000 + Math.random() * 89999))}`;
+  return { id: crypto.randomUUID(), number: ref, reference: ref };
+};
+
 const createSchema = z.object({
   ...s.customer,
   message: s.text('Description', { min: 5, max: 4000 }),
@@ -25,6 +31,9 @@ const createSchema = z.object({
   // Réservé à l'administration.
   user_id: s.optionalUuid('Client'),
   source: z.enum(['site', 'whatsapp', 'telephone', 'atelier', 'admin']).optional(),
+  // Case « J’accepte… » du formulaire public (obligatoire sans compte) et champ piège invisible anti-robot.
+  consent: z.boolean().optional(),
+  website: z.string().max(300).optional(),
 });
 
 const patchSchema = z.object({
@@ -67,6 +76,9 @@ export default handler({
         : [];
     const message = data.message ?? data.details;
     if (!can(actor, 'quotes')) {
+      // Champ piège rempli : un robot. Réponse identique à un succès, rien n'est enregistré.
+      if (data.website) return send(res, 201, fakeReceipt('DV'));
+      if (!user && data.consent !== true) return send(res, 400, { error: 'Cochez la case d’accord sur l’utilisation de vos informations.' });
       if (!message) return send(res, 400, { error: 'Description : champ obligatoire.' });
       await rateLimit(`quote:phone:${data.phone}`, 5, 60, 'Trop de demandes envoyées avec ce numéro. Écrivez-nous sur WhatsApp.');
       await rateLimit(`quote:ip:${clientIp(req)}`, 20, 60, 'Trop de demandes envoyées. Écrivez-nous sur WhatsApp.');
@@ -77,6 +89,7 @@ export default handler({
       message,
       email: data.email ?? user?.email ?? null,
       user_id: can(actor, 'quotes') ? data.user_id : null,
+      consent_at: data.consent === true ? new Date().toISOString() : null,
     });
 
     // « reference » : nom utilisé par le formulaire du site depuis la v1.

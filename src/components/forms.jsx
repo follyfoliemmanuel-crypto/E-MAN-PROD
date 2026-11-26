@@ -28,6 +28,15 @@ function Field({ label, hint, children }) {
   );
 }
 
+/** Champ piège invisible : les personnes ne le voient pas, les robots le remplissent. */
+function Honeypot({ value, onChange }) {
+  return (
+    <div className="hpField" aria-hidden="true">
+      <label>Site web (laisser vide)<input type="text" name="website" tabIndex={-1} autoComplete="off" value={value} onChange={onChange} /></label>
+    </div>
+  );
+}
+
 function Consent({ checked, onChange, onNavigate }) {
   return (
     <label className="consent">
@@ -75,7 +84,7 @@ export function QuoteForm({ initialService = '', onClose, title = 'Demander un d
   const prestationOptions = cat.prestations.map((p) => p.title);
   // Une prestation passée en paramètre mais absente de la liste reste sélectionnable.
   if (initialService && initialService !== 'Autre demande' && !prestationOptions.includes(initialService)) prestationOptions.unshift(initialService);
-  const blank = { name: '', phone: '', email: '', service: initialService, quantity: '', details: '', consent: false };
+  const blank = { name: '', phone: '', email: '', service: initialService, quantity: '', details: '', consent: false, website: '' };
   const [f, set, setF] = useForm(blank);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -137,6 +146,7 @@ export function QuoteForm({ initialService = '', onClose, title = 'Demander un d
       <Field label="E-mail (facultatif)" hint="Pour retrouver cette demande dans votre espace client.">
         <input type="email" autoComplete="email" value={f.email} onChange={set('email')} />
       </Field>
+      <Honeypot value={f.website} onChange={set('website')} />
       <Consent checked={f.consent} onChange={set('consent')} onNavigate={onClose} />
       <ErrorLine error={error} />
       <Submit busy={busy}>Envoyer la demande</Submit>
@@ -149,7 +159,7 @@ export function QuoteForm({ initialService = '', onClose, title = 'Demander un d
 // ---------------------------------------------------------------------------
 export function TrainingForm({ course, onClose }) {
   const open = (course.sessions || []).filter((s) => s.status === 'ouverte' && s.seats_left !== 0);
-  const blank = { name: '', phone: '', email: '', session_id: open[0]?.id || '', message: '', consent: false };
+  const blank = { name: '', phone: '', email: '', session_id: open[0]?.id || '', message: '', consent: false, website: '' };
   const [f, set, setF] = useForm(blank);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -212,6 +222,7 @@ export function TrainingForm({ course, onClose }) {
       <Field label="Message (facultatif)">
         <textarea rows={3} value={f.message} onChange={set('message')} placeholder="Votre niveau, vos disponibilités" />
       </Field>
+      <Honeypot value={f.website} onChange={set('website')} />
       <Consent checked={f.consent} onChange={set('consent')} onNavigate={onClose} />
       <ErrorLine error={error} />
       <Submit busy={busy}>Envoyer ma demande d’inscription</Submit>
@@ -250,7 +261,7 @@ function GoogleButton({ mode, available, onDemo }) {
   );
 }
 
-export function AuthForm({ onDone, notify, startDemo, google = false, initialMode = 'login', serverIssue = '', onMfa }) {
+export function AuthForm({ onDone, notify, startDemo, google = false, initialMode = 'login', serverIssue = '', onMfa, onClose }) {
   const [mode, setMode] = useState(initialMode === 'signup' ? 'signup' : 'login');
   // Inscription : Google d'abord (un clic, adresse déjà vérifiée) ; l'e-mail reste possible.
   const [emailSignup, setEmailSignup] = useState(!google);
@@ -320,6 +331,12 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
             <button type="button" className="btn btnGhost btnBlock" onClick={() => setEmailSignup(true)}>Créer un compte avec mon e-mail</button>
           ) : <p className="orLine"><span>ou avec votre e-mail</span></p>}
         </>
+      )}
+      {mode === 'signup' && (
+        <p className="hint signupLegal">
+          En créant un compte, vous acceptez nos <Link to="/conditions-generales" onClick={onClose}>conditions générales</Link> et
+          notre <Link to="/confidentialite" onClick={onClose}>politique de confidentialité</Link>.
+        </p>
       )}
       {mode === 'signup' && !emailSignup ? null : <>
       {mode === 'signup' && (

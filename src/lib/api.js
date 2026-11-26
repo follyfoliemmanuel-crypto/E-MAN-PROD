@@ -417,6 +417,7 @@ export const security = {
   clients: (q) => (DEMO ? Promise.resolve({ clients: [] }) : call('/api/account?clients=1&q=' + encodeURIComponent(q || ''))),
   setRole: (body) => call('/api/account', { method: 'POST', body: { action: 'role', ...body } }),
   disable: (user_id, disabled) => call('/api/account', { method: 'POST', body: { action: 'disable', user_id, disabled } }),
+  anonymize: (user_id) => call('/api/account', { method: 'POST', body: { action: 'anonymize', user_id, confirm: 'ANONYMISER' } }),
   revokeUser: (user_id) => call('/api/account', { method: 'POST', body: { action: 'revoke_sessions', user_id } }),
 };
 
@@ -514,6 +515,7 @@ export const space = {
   verify: (code) => call('/api/documents?verify=' + encodeURIComponent(code)),
   // Paramètres et e-mails (admin)
   emailStatus: () => call('/api/manage', { method: 'POST', body: { action: 'email.status' } }).then((r) => r.result),
+  productionChecks: () => (DEMO ? Promise.resolve({ checks: [{ id: 'demo', ok: false, level: 'info', label: 'Mode démonstration', detail: 'Les vérifications portent sur le site en ligne.' }] }) : call('/api/manage', { method: 'POST', body: { action: 'production.checks' } }).then((r) => r.result)),
   storageStatus: () => (DEMO ? Promise.resolve({ active: null, max_bytes: null, cloudinary: { configured: false, missing: ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'] }, by_driver: [], integrity: {}, runs: [], not_backed_up: 0 }) : call('/api/manage', { method: 'POST', body: { action: 'storage.status' } }).then((r) => r.result)),
   authStatus: () => (DEMO ? Promise.resolve({ google: { configured: false, secret: false, client_id: null, origin: window.location.origin, redirect_uri: `${window.location.origin}/api/auth/google-callback`, linked_accounts: 0 } }) : call('/api/manage', { method: 'POST', body: { action: 'auth.status' } }).then((r) => r.result)),
   emailPreview: (template, subject, intro) => call('/api/manage', { method: 'POST', body: { action: 'email.preview', template, subject, intro } }).then((r) => r.result),

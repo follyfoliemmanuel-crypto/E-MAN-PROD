@@ -10,6 +10,8 @@ const EMPTY = { prestations: [], poles: [], courses: [], gallery: [], galleryCat
 // Dernière version reçue, gardée dans le navigateur : un visiteur qui revient voit la page
 // tout de suite (sans décalage de mise en page), puis elle est remplacée par la version à jour.
 // Ce n'est qu'un confort d'affichage : les places restantes et les prix sont toujours relus.
+import { comfortAllowed } from './consent.js';
+
 const CACHE_KEY = 'emp_catalog_v1';
 const CACHE_MAX_AGE = 7 * 24 * 3600 * 1000;
 function readCache() {
@@ -19,6 +21,7 @@ function readCache() {
   } catch { return null; }
 }
 function writeCache(data) {
+  if (!comfortAllowed()) return;
   try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), data })); } catch { /* stockage plein ou interdit */ }
 }
 

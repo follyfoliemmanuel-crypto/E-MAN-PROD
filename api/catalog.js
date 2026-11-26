@@ -3,18 +3,29 @@
 //                    restantes), réalisations publiées, avis publiés, réglages publics
 //   GET ?all=1     : idem avec les éléments masqués et les sessions passées (admin)
 //   GET ?sitemap=1 : plan du site XML (servi à /sitemap.xml par vercel.json)
+//   GET ?health=1  : surveillance de disponibilité (200 si le site et la base répondent, sinon 503)
 import { query } from './_lib/db.js';
 import { handler, send, siteUrl, readQuery, Q } from './_lib/http.js';
 import { requirePermission, requireUser, can } from './_lib/auth.js';
 import { loadCatalog } from './_lib/services/content.js';
 
-const STATIC_PAGES = ['/', '/prestations', '/formations', '/realisations', '/a-propos', '/contact', '/e-man-cars', '/mentions-legales', '/confidentialite'];
+const STATIC_PAGES = ['/', '/prestations', '/formations', '/realisations', '/a-propos', '/contact', '/e-man-cars', '/mentions-legales', '/confidentialite', '/conditions-generales'];
 
 const xmlEscape = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
 export default handler({
   async GET(req, res) {
-    const q = readQuery(req, { all: Q.flag, sitemap: Q.flag });
+    const q = readQuery(req, { all: Q.flag, sitemap: Q.flag, health: Q.flag });
+    if (q.health === '1') {
+      // Pour un service de surveillance (UptimeRobot, Better Stack…) : aucune donnée, juste l'état.
+      res.setHeader('Cache-Control', 'no-store');
+      try {
+        await query('select 1 as ok');
+        return send(res, 200, { ok: true, database: true, checked_at: new Date().toISOString() });
+      } catch {
+        return send(res, 503, { ok: false, database: false, checked_at: new Date().toISOString() });
+      }
+    }
     const all = q.all === '1';
     if (all) {
       // Vue complète (éléments masqués) : équipe chargée du contenu ou des formations.

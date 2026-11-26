@@ -9,6 +9,8 @@ export default function Modal({ label, onClose, children }) {
 
   useEffect(() => {
     const dialog = ref.current;
+    // Élément qui avait le focus (le bouton « Connexion », « Demander un devis »…) : on y revient à la fermeture.
+    const opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
     dialog.showModal();
     // Sur ordinateur, on place le curseur dans le premier champ. Sur écran
     // tactile, on évite d'ouvrir le clavier d'office.
@@ -16,7 +18,11 @@ export default function Modal({ label, onClose, children }) {
       dialog.querySelector('input:not([type=checkbox]), select, textarea')?.focus();
     }
     document.documentElement.classList.add('modal-open');
-    return () => document.documentElement.classList.remove('modal-open');
+    return () => {
+      document.documentElement.classList.remove('modal-open');
+      // Après le démontage : le bouton existe toujours et reste visible → le focus y retourne.
+      if (opener && opener.isConnected) setTimeout(() => { if (opener.isConnected && !document.querySelector('dialog[open]')) opener.focus({ preventScroll: true }); }, 0);
+    };
   }, []);
 
   function close() {

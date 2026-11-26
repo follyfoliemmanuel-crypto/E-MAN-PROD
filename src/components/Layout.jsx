@@ -3,6 +3,7 @@ import { Menu, X, MapPin, Phone, Mail, Clock3, MessageCircle, ChevronDown, Arrow
 import { Avatar } from './Avatar.jsx';
 import { Link, usePath } from '../lib/router.jsx';
 import { BUSINESS, whatsappLink } from '../config.js';
+import { openCookieSettings } from '../lib/consent.js';
 import { useApp } from '../context.js';
 import { useCatalog } from '../lib/catalog.jsx';
 
@@ -355,6 +356,8 @@ export function Footer() {
         <span className="footerLegal">
           <Link to="/mentions-legales">Mentions légales</Link>
           <Link to="/confidentialite">Confidentialité</Link>
+          <Link to="/conditions-generales">Conditions générales</Link>
+          <button type="button" className="footerLinkBtn" onClick={openCookieSettings}>Gérer les cookies</button>
           <Link to="/verifier">Vérifier une attestation</Link>
           <button type="button" className="toTop" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>Revenir en haut</button>
         </span>

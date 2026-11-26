@@ -10,11 +10,12 @@
 //   setting.update                         réglages du site (coordonnées, textes)
 //   auth.status                            état de la connexion Google (admin)
 //   storage.status                         état du stockage Cloudinary et des sauvegardes (admin)
+//   production.checks                      points à vérifier avant et après la mise en production (admin)
 // Anciens noms (v2.4), toujours acceptés : course.update, prestation.update, gallery.*.
 import { z } from 'zod';
 import { handler, send, readJson, HttpError } from './_lib/http.js';
 import { requirePermission, maskEmail } from './_lib/auth.js';
-import { assertRecentMfa } from './_lib/mfa.js';
+import { assertRecentMfa, mfaRequired } from './_lib/mfa.js';
 import { actorOf, CLIENT_EMAIL_EVENTS, TEAM_EMAIL_EVENTS } from './_lib/activity.js';
 import { query, one } from './_lib/db.js';
 import { TEMPLATES, renderEmail } from './_lib/emails.js';
@@ -272,6 +273,55 @@ const actions = {
     return { ...st, cloudinary: { configured: st.cloudinary.configured, missing: st.cloudinary.missing, cloud: st.cloudinary.cloud, folder: st.cloudinary.folder },
       by_driver: byDriver, integrity: Object.fromEntries(integrity.map((r) => [r.state, r.n])), runs, not_backed_up: pending[0].n };
   },
+  // Mise en production : réglages qu'on ne voit pas depuis le code (lecture seule, aucune valeur secrète renvoyée).
+  'production.checks': async (a, b, req) => {
+    adminOnly(a);
+    const mail = mailStatus();
+    const fromDomain = String(mail.from || '').match(/@([^>\s]+)/)?.[1]?.toLowerCase() || '';
+    const [[db], [legalRow], broken, [mails], [backup]] = await Promise.all([
+      query(`select current_user as role, has_schema_privilege(current_user, 'public', 'CREATE') as can_create from (select 1) x`),
+      query(`select value from site_settings where key = 'legal'`).then((r) => (r.length ? r : [{ value: {} }])),
+      query(`select m.slot from site_media m left join uploaded_files f on f.id = m.file_id and f.status = 'ready'
+             where m.url like '%res.cloudinary.com%' and f.id is null order by m.slot`),
+      query(`select count(*) filter (where status = 'envoye')::int as sent, count(*) filter (where status = 'echec')::int as failed
+             from email_log where created_at > now() - interval '30 days'`),
+      query(`select max(started_at) filter (where status = 'ok') as last_ok from backup_runs`),
+    ]);
+    const legal = legalRow.value || {};
+    const missingLegal = ['legalName', 'legalForm', 'rccm', 'nif', 'director', 'headOffice'].filter((k) => !String(legal[k] || '').trim());
+    const site = siteUrl(req);
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
+    const days = backup.last_ok ? Math.floor((Date.now() - new Date(backup.last_ok).getTime()) / 86400000) : null;
+    const item = (id, ok, label, detail, level = ok ? 'ok' : 'warn') => ({ id, ok, level, label, detail });
+    const checks = [
+      item('mail', mail.configured && fromDomain && !/(^|\.)resend\.dev$|gmail\.com$/.test(fromDomain),
+        'Envoi des e-mails',
+        !mail.configured ? 'Aucun fournisseur configuré : aucun e-mail ne part.'
+          : !fromDomain ? 'Adresse d’expédition (MAIL_FROM) absente.'
+          : /resend\.dev$/.test(fromDomain) ? 'Expéditeur de test resend.dev : seuls les e-mails vers le titulaire du compte Resend partent. Vérifiez votre domaine chez Resend et changez MAIL_FROM.'
+          : /gmail\.com$/.test(fromDomain) ? 'Une adresse Gmail ne peut pas servir d’expéditeur chez Resend ou Brevo : utilisez une adresse de votre domaine.'
+          : `${mail.provider}, expéditeur @${fromDomain}. 30 derniers jours : ${mails.sent} envoyé(s), ${mails.failed} en échec.`,
+        mail.configured && mails.failed > 0 && mails.sent === 0 ? 'error' : undefined),
+      item('legal', missingLegal.length === 0, 'Mentions légales',
+        missingLegal.length ? `À compléter dans Paramètres du site → Informations légales : ${missingLegal.map((k) => LEGAL_LABELS[k]).join(', ')}.` : 'Toutes les informations obligatoires sont remplies.'),
+      item('banners', broken.length === 0, 'Photos du site',
+        broken.length ? `Photo sans fichier, affichée par défaut : ${broken.map((r) => r.slot).join(', ')}. Renvoyez-la depuis Images et bannières.` : 'Toutes les photos ont leur fichier.'),
+      item('mfa', mfaRequired(), 'Google Authenticator obligatoire pour l’équipe',
+        mfaRequired() ? 'Activé.' : 'Désactivé (MFA_REQUIRED=0) : retirez cette variable dans Vercel.'),
+      item('cron', Boolean(process.env.CRON_SECRET), 'Nettoyage nocturne des fichiers',
+        process.env.CRON_SECRET ? 'CRON_SECRET présent.' : 'CRON_SECRET absent dans Vercel : le nettoyage de 3 h 17 ne tourne pas.'),
+      item('db', !db.can_create, 'Compte de base limité',
+        db.can_create ? 'Le site utilise le compte propriétaire de la base. Lancez db/securite-base.sql puis basculez DATABASE_URL (voir DEPLOIEMENT.md).' : `Compte limité « ${db.role} » en service.`),
+      item('site', Boolean(host) && site.includes(host.split(':')[0]), 'Adresse du site (SITE_URL)',
+        `Liens des e-mails et aperçus : ${site}. ${host && !site.includes(host.split(':')[0]) ? `Différente de l’adresse consultée (${host}) : vérifiez que ce domaine répond avant de le garder.` : ''}`.trim()),
+      item('backup', days !== null && days <= 7, 'Sauvegarde hors ligne',
+        days === null ? 'Aucune sauvegarde enregistrée. Lancez npm run backup depuis un poste (voir DEPLOIEMENT.md).' : `Dernière sauvegarde réussie il y a ${days} jour(s).`),
+      item('search', Boolean(process.env.GOOGLE_SITE_VERIFICATION), 'Google Search Console',
+        process.env.GOOGLE_SITE_VERIFICATION ? 'Balise de vérification ajoutée aux pages.' : 'Ajoutez GOOGLE_SITE_VERIFICATION dans Vercel puis redéployez.'),
+      item('cgv', false, 'Conditions générales', 'Texte de base publié : faites-le relire par un juriste et ajustez délais et acomptes.', 'info'),
+    ];
+    return { checks };
+  },
   'setting.update': (a, b) => {
     // Coordonnées et textes officiels : réservés aux administrateurs.
     if (a.role !== 'admin') throw new HttpError(403, 'Seul un administrateur peut modifier les réglages du site.');
@@ -288,6 +338,7 @@ actions['gallery.delete'] = actions['portfolio.delete'];
 
 /** Droit exigé par action : les formations relèvent du droit « trainings », le reste de « content ». */
 const permissionOf = (action) => (/^(training|category|session|course)\./.test(action) ? 'trainings' : 'content');
+const LEGAL_LABELS = { legalName: 'raison sociale', legalForm: 'forme juridique', rccm: 'RCCM', nif: 'NIF', director: 'directeur de la publication', headOffice: 'siège social' };
 const adminOnly = (a) => { if (a.role !== 'admin') throw new HttpError(403, 'Réservé aux administrateurs.'); };
 const sampleVars = (a) => ({ prenom: (a.name || 'Kofi').split(' ')[0], numero: 'DV-2026-00042', prestations: 'Bâche 3 × 2 m', total: '70 000 FCFA', validite: '18 décembre 2026', decision: 'accepté', statut: 'En production', date_prevue: '15 décembre 2026', formation: 'Infographie', session: 'du 1er au 26 février 2027', lieu: 'Baguida', sujet: 'Réponse de l’équipe E-MAN PROD', titre: 'Fermeture exceptionnelle le 24 décembre', invite_par: 'Ama Dossou', document: 'attestation' });
 

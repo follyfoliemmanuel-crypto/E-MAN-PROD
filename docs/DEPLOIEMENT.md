@@ -124,6 +124,15 @@ Le code suppose des fonctions serverless Node au format Vercel (`api/*.js`, `exp
 2. Déployer sur Vercel. Aucune nouvelle variable.
 3. Dans « Images et bannières », bouton « Cadrage » sur chaque photo dont le sujet n'est pas centré.
 
+## Passage à la v4.2 (audit avant production)
+
+Suivre `docs/A-FAIRE-MANUELLEMENT.md` dans l'ordre (sauvegarde, e-mails, variables, déploiement,
+compte limité, mentions légales, photos, CGV, surveillance, sauvegarde planifiée, Search Console,
+vérification finale avec `db/production-verification.sql`). Détail des corrections :
+`docs/CORRECTIONS-V4.2.md`. Le déploiement applique la migration 014 après une copie de sécurité
+de toutes les tables (schéma `avant_migration_014`). Nouvelles variables facultatives :
+`GOOGLE_SITE_VERIFICATION` ; `CRON_SECRET` devient indispensable (durée de conservation).
+
 ## Sécurisation de la base (avant l'ouverture)
 
 1. Neon → SQL Editor → `db/securite-base.sql` → Run (compte propriétaire). Copier le mot de passe

@@ -85,8 +85,8 @@ export async function createQuote(actor, input) {
   const source = admin ? input.source || 'admin' : 'site';
   const row = await one(
     `with q as (
-       insert into quotes (user_id, customer_name, customer_phone, customer_email, customer_company, message, source)
-       values ($1, $2, $3, $4, $5, $6, $7) returning id, number
+       insert into quotes (user_id, customer_name, customer_phone, customer_email, customer_company, message, source, consent_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $9::timestamptz) returning id, number
      ), i as (
        insert into quote_items (quote_id, service_slug, label, description, quantity, unit, unit_price_fcfa, sort)
        select q.id, x.service_slug, x.label, x.description, x.quantity, x.unit, x.unit_price_fcfa, x.sort
@@ -94,7 +94,7 @@ export async function createQuote(actor, input) {
        returning id
      )
      select q.id, q.number, (select count(*) from i)::int as items from q`,
-    [userId, input.name, input.phone, input.email, input.company, input.message, source, JSON.stringify(items)],
+    [userId, input.name, input.phone, input.email, input.company, input.message, source, JSON.stringify(items), input.consent_at ?? null],
   );
   await logActivity(actor, 'quote.created', 'quote', row.id, { number: row.number, source, items: items.length });
   const labels = items.map((i) => (i.quantity && Number(i.quantity) !== 1 ? `${i.label} × ${Number(i.quantity).toLocaleString('fr-FR')}` : i.label)).join(', ');

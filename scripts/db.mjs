@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { seedStatements } from '../src/content/seed.js';
 import { typeParsers } from '../api/_lib/db.js';
-import { migrate, migrationStatus, backup, isEmptyDatabase, ensureGitignored } from './lib/migrate.mjs';
+import { migrate, migrationStatus, backup, isEmptyDatabase, ensureGitignored, snapshotInDatabase } from './lib/migrate.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const MIGRATIONS = root + 'db/migrations';
@@ -77,7 +77,11 @@ try {
       before: async (pending) => {
         console.log(`Migrations à appliquer : ${pending.map((m) => m.file).join(', ')}`);
         if (empty) console.log('Base vide : pas de sauvegarde nécessaire.');
-        else if (args.includes('--no-backup')) console.log('⚠ Sauvegarde désactivée (--no-backup).');
+        else if (args.includes('--snapshot')) {
+          // Déploiement Vercel : copie dans la base elle-même (aucun fichier ne survit au build).
+          const { schema, tables } = await snapshotInDatabase(db, pending[0].version);
+          console.log(`✔ Copie de sécurité : ${tables} tables → schéma ${schema}`);
+        } else if (args.includes('--no-backup')) console.log('⚠ Sauvegarde désactivée (--no-backup).');
         else await doBackup('avant-migration');
       },
       log: (m) => console.log('  ' + m),

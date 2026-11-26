@@ -59,6 +59,11 @@ export const ROUTES = {
     description: 'Comment E-MAN PROD (Baguida, Togo) collecte, utilise et protège vos données personnelles (devis, commandes, formations) et comment exercer vos droits.',
     sitemap: true,
   },
+  '/conditions-generales': {
+    title: 'Conditions générales | E-MAN PROD',
+    description: 'Conditions générales d’E-MAN PROD (Lomé, Togo) : devis, commandes, bon à tirer, paiement, délais, réclamations et formations.',
+    sitemap: true,
+  },
   '/verifier': {
     title: 'Vérifier une attestation de formation | E-MAN PROD',
     description: 'Vérifiez l’authenticité d’une attestation ou d’un certificat délivré par le centre de formation E-MAN PROD (Togo) grâce au code imprimé sur le document.',

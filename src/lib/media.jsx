@@ -12,6 +12,8 @@ const defaults = Object.fromEntries(MEDIA_SLOTS.map((m) => [m.slot, m]));
 //  - la liste est demandée dès le chargement du script (avant même l'affichage) ;
 //  - la dernière liste reçue est gardée sur l'appareil : visites suivantes = vraies photos d'emblée ;
 //  - en attendant, fond neutre (pas de visuel par défaut) ; au-delà de 3 s sans réponse, visuels par défaut.
+import { comfortAllowed } from './consent.js';
+
 const CACHE_KEY = 'eman-media-v1';
 const WAIT_MS = 3000;
 const readCache = () => {
@@ -20,7 +22,7 @@ const readCache = () => {
     return c && c.media && Date.now() - c.at < 30 * 24 * 3600 * 1000 ? c.media : null;
   } catch { return null; }
 };
-const writeCache = (media) => { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), media })); } catch { /* stockage indisponible */ } };
+const writeCache = (media) => { if (!comfortAllowed()) return; try { localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), media })); } catch { /* stockage indisponible */ } };
 let early = null;
 const firstFetch = () => (early ||= fetchMedia());
 if (typeof window !== 'undefined') firstFetch().catch(() => {});

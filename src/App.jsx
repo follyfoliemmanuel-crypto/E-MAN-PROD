@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import CookieBanner from './components/CookieBanner.jsx';
 import { AppContext } from './context.js';
 import { auth, space, DEMO, setStepUpPrompt } from './lib/api.js';
 import { MfaLoginForm, StepUpForm } from './components/mfaForms.jsx';
@@ -10,7 +11,7 @@ import { Header, Footer, WhatsAppButton } from './components/Layout.jsx';
 import Modal from './components/Modal.jsx';
 import { QuoteForm, AuthForm, NewPasswordForm } from './components/forms.jsx';
 import { applySettings } from './config.js';
-import { Home, Contact, MentionsLegales, Confidentialite, VerifyCertificate } from './pages/public.jsx';
+import { Home, Contact, MentionsLegales, Confidentialite, ConditionsGenerales, VerifyCertificate } from './pages/public.jsx';
 import { PrestationsIndex, PrestationPage } from './pages/prestations.jsx';
 import { TrainingCenter, CoursePage } from './pages/formations.jsx';
 import { Realisations } from './pages/gallery.jsx';
@@ -32,6 +33,7 @@ const PAGES = {
   '/espace': Dashboard,
   '/mentions-legales': MentionsLegales,
   '/confidentialite': Confidentialite,
+  '/conditions-generales': ConditionsGenerales,
   '/verifier': VerifyCertificate,
 };
 
@@ -216,11 +218,12 @@ export default function App() {
       <HashOnLoad />
       <Header />
       <div className="page">
-        <Suspense fallback={<main id="contenu" className="space" aria-busy="true"><p className="wrap muted" style={{ padding: '48px 0' }}>Chargement de votre espace…</p></main>}>
+        <Suspense fallback={<main id="contenu" className="space spaceLoading" aria-busy="true"><p className="wrap muted" style={{ padding: '48px 0' }}>Chargement de votre espace…</p></main>}>
           <Page key={path} {...route.props} />
         </Suspense>
       </div>
       <Footer />
+      <CookieBanner />
       <WhatsAppButton />
 
       {modal && (
@@ -231,6 +234,7 @@ export default function App() {
               {modal.type === 'auth' && (
                 <AuthForm
                   key={modal.mode}
+                  onClose={close}
                   initialMode={modal.mode}
                   notify={notify}
                   google={methods.google}

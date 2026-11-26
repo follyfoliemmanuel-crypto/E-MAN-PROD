@@ -12,7 +12,23 @@
       "destination": "/api/catalog?sitemap=1"
     },
     {
-      "source": "/((?!api/|assets/|fonts/|.*\\.).*)",
+      "source": "/services",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/prestations/:slug([a-z0-9-]+)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/formations/:slug([a-z0-9-]+)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/espace/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/verifier/:path*",
       "destination": "/index.html"
     }
   ],

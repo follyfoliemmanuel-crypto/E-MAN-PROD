@@ -1,7 +1,7 @@
 // Paramètres (administrateurs) : coordonnées, WhatsApp, réseaux sociaux, informations légales,
 // documents, e-mails (modèles, essai, journal) et notifications. Annonces aux clients.
 import React, { useState } from 'react';
-import { Send, Eye, Megaphone, CircleCheck, TriangleAlert } from 'lucide-react';
+import { Send, Eye, Megaphone, CircleCheck, TriangleAlert, Info } from 'lucide-react';
 import { useCatalog } from '../../lib/catalog.jsx';
 import { space, fetchCatalog, formatDate } from '../../lib/api.js';
 import { WHATSAPP_PURPOSES, BUSINESS } from '../../config.js';
@@ -9,7 +9,7 @@ import { useLoad, Loading, ErrorBox, SectionHead, EmptyState, useConfirm } from 
 import { SettingForm, BusinessForm } from './team.jsx';
 
 const TABS = [
-  ['coordonnees', 'Coordonnées'], ['whatsapp', 'WhatsApp'], ['reseaux', 'Réseaux sociaux'], ['legal', 'Informations légales'],
+  ['production', 'Mise en production'], ['coordonnees', 'Coordonnées'], ['whatsapp', 'WhatsApp'], ['reseaux', 'Réseaux sociaux'], ['legal', 'Informations légales'],
   ['documents', 'Devis et factures'], ['emails', 'E-mails'], ['notifications', 'Notifications'], ['connexion', 'Connexion Google'], ['stockage', 'Fichiers et sauvegardes'],
 ];
 
@@ -40,6 +40,7 @@ export function SettingsAdmin({ notify, params = {}, go }) {
       </div>
       {loading && !data ? <Loading /> : error ? <ErrorBox error={error} onRetry={reload} /> : (
         <div role="tabpanel" key={tab}>
+          {tab === 'production' && <ProductionChecks />}
           {tab === 'coordonnees' && <BusinessForm value={c.business || {}} onSave={(v) => save('business', v)} />}
           {tab === 'whatsapp' && <WhatsappForm value={c.whatsapp || {}} onSave={(v) => save('whatsapp', v)} />}
           {tab === 'reseaux' && (
@@ -195,6 +196,33 @@ const RUN_STATUS = { ok: 'réussie', partial: 'partielle', failed: 'échec', run
 const DRIVER_LABEL = { cloudinary: 'Cloudinary', s3: 'Ancien stockage S3 (à migrer)', local: 'Dossier local (développement)' };
 
 /** Fichiers : fournisseur, limite, répartition, sauvegardes réellement effectuées (journal backup_runs). */
+/** Mise en production : réglages Vercel, e-mails, mentions légales, photos, sauvegardes. Lecture seule. */
+function ProductionChecks() {
+  const [{ data, error, loading }, reload] = useLoad(() => space.productionChecks(), []);
+  if (loading && !data) return <Loading />;
+  if (error) return <ErrorBox error={error} onRetry={reload} />;
+  const todo = data.checks.filter((c) => c.level === 'warn' || c.level === 'error').length;
+  const Icon = { ok: CircleCheck, warn: TriangleAlert, error: TriangleAlert, info: Info };
+  return (
+    <section className="spaceBlock" aria-labelledby="prod-checks">
+      <h2 className="subTitle" id="prod-checks">{todo ? `${todo} point(s) à régler` : 'Tout est prêt'}</h2>
+      <p className="muted">Ces réglages se font hors du code (Vercel, Resend, espace admin). La liste se met à jour à chaque ouverture.</p>
+      <ul className="prodChecks">
+        {data.checks.map((c) => {
+          const I = Icon[c.level] || Info;
+          return (
+            <li key={c.id} className={`prodCheck ${c.level}`} data-check={c.id}>
+              <I size={18} aria-hidden="true" />
+              <div><strong>{c.label}</strong><span>{c.detail}</span></div>
+            </li>
+          );
+        })}
+      </ul>
+      <button type="button" className="btn btnGhost" onClick={reload}>Vérifier de nouveau</button>
+    </section>
+  );
+}
+
 function StorageStatus() {
   const [{ data, error, loading }, reload] = useLoad(() => space.storageStatus(), []);
   if (loading && !data) return <Loading />;

@@ -13,7 +13,8 @@
 // cette fonction. En développement sans Cloudinary : PUT/GET ?local=… (dossier .uploads/).
 import { z } from 'zod';
 import { timingSafeEqual } from 'node:crypto';
-import { handler, send, readJson, HttpError, readQuery, Q } from './_lib/http.js';
+import { applyRetention } from './_lib/services/retention.js';
+import { handler, send, readJson, HttpError, readQuery, Q, logError } from './_lib/http.js';
 import { currentUser, requireUser, requireAdmin, rateLimit } from './_lib/auth.js';
 import { actorOf } from './_lib/activity.js';
 import { provider, storageStatus, verifyLocalSignature } from './_lib/storage.js';
@@ -77,7 +78,10 @@ export default handler({
       const secret = process.env.CRON_SECRET;
       const given = String(req.headers.authorization || '');
       if (!secret || given.length !== secret.length + 7 || !timingSafeEqual(Buffer.from(given), Buffer.from(`Bearer ${secret}`))) throw new HttpError(404, 'Adresse inconnue.');
-      return send(res, 200, await files.cleanupPending({ id: null, role: 'system', permissions: [] }));
+      const cleaned = await files.cleanupPending({ id: null, role: 'system', permissions: [] });
+      // Durée de conservation (3 ans) : anonymise les demandes sans suite, sans rien supprimer.
+      const retention = await applyRetention().catch((err) => { logError('retention.failed', err); return { error: true }; });
+      return send(res, 200, { ...cleaned, retention });
     }
     if (q.local === 'get') {
       // Lecture directe : seulement pour le stockage local de développement (jamais sur Vercel).

@@ -92,3 +92,25 @@ export function ensureGitignored(root, entry) {
   const text = existsSync(file) ? readFileSync(file, 'utf8') : '';
   if (!text.split(/\r?\n/).includes(entry)) writeFileSync(file, text.replace(/\n?$/, '\n') + entry + '\n');
 }
+
+/**
+ * Copie de sécurité DANS la base, avant des migrations lancées depuis Vercel (où aucun fichier ne
+ * survit au build) : chaque table publique est copiée dans le schéma « avant_migration_<version> ».
+ * Les 2 copies les plus récentes sont gardées, les plus anciennes retirées (jamais les tables du site).
+ * Restauration manuelle : voir docs/A-FAIRE-MANUELLEMENT.md.
+ */
+export async function snapshotInDatabase(db, label, { keep = 2 } = {}) {
+  const schema = `avant_migration_${String(label).replace(/[^0-9a-z_]/gi, '').slice(0, 40) || 'x'}`;
+  const tables = (await db.rows(`select tablename from pg_tables where schemaname = 'public' order by tablename`)).map((r) => r.tablename);
+  await db.exec(`begin; drop schema if exists ${schema} cascade; create schema ${schema}; revoke all on schema ${schema} from public;`);
+  try {
+    for (const t of tables) await db.exec(`create table ${schema}."${t.replace(/"/g, '')}" as table public."${t.replace(/"/g, '')}"`);
+    await db.exec('commit');
+  } catch (err) {
+    await db.exec('rollback').catch(() => {});
+    throw new Error(`Copie de sécurité impossible, aucune migration lancée : ${err.message}`);
+  }
+  const old = (await db.rows(`select nspname from pg_namespace where nspname like 'avant\\_migration\\_%' order by nspname desc`)).map((r) => r.nspname);
+  for (const s of old.slice(keep)) await db.exec(`drop schema ${s} cascade`);
+  return { schema, tables: tables.length };
+}

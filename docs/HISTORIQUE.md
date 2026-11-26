@@ -1,5 +1,25 @@
 # Historique des versions et des vérifications
 
+## v4.2.0 — Corrections de l'audit avant production, bandeau cookies, SQL de production
+
+- **Légal** : page Conditions générales ; politique de confidentialité corrigée (Cloudinary, Google,
+  notifications, 4 cookies techniques décrits, effacement) ; lien vers les conditions à l'inscription.
+- **Bandeau cookies** : première visite, « Tout accepter / Nécessaires uniquement / Personnaliser »,
+  rouvrable par « Gérer les cookies ». Le refus de l'« affichage rapide » efface les copies locales.
+- **Données personnelles** : anonymisation d'un client (droit à l'effacement, factures et attestations
+  conservées) ; consentement exigé et daté pour les demandes sans compte ; durée de conservation de
+  3 ans appliquée chaque nuit (anonymisation, rien supprimé).
+- **Production** : onglet « Mise en production » (e-mails, mentions légales, photos, MFA, CRON, compte
+  de base, adresse du site, sauvegarde, Search Console, CGV) ; adresse de surveillance
+  `/api/catalog?health=1` ; copie de toutes les tables avant chaque migration lancée par Vercel.
+- **Robustesse** : écran de secours au lieu d'une page blanche ; vrai code 404 ; champ piège anti-robot ;
+  focus rendu au bouton après une fenêtre ; `/espace` sans saut de mise en page (CLS 0,44 → 0).
+- **Base** : migration 014 additive (consentement, 5 index, clé primaire anti-abus).
+  SQL : `mise-a-jour-v4.2.sql`, `production-verification.sql`, `effacement-journaux-client.sql`.
+- Tests : régression complète au vert ; nouvelles suites v4.2 API 39/39, navigateur 37/37,
+  conservation 11/11 ; `securite-base.sql` appliqué tel quel puis API v4.2 et sécurité rejouées avec
+  le compte `eman_app` (39/39, 83/83) ; scripts SQL de production exécutés sur une copie de la base.
+
 ## v4.1.3 — Audit de sécurité ciblé, bannière sans flash, « Partager le site »
 
 - **Sécurité (audit ciblé, corrigé)** : la re-signature des adresses Cloudinary ajoutée en v4.1.2

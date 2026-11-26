@@ -264,11 +264,61 @@ export function Confidentialite() {
         <h2>Durée de conservation</h2>
         <p>Les demandes sans suite sont conservées au plus 3 ans après le dernier contact. Les données liées aux commandes, factures et formations sont conservées le temps exigé par les obligations comptables.</p>
         <h2>Prestataires</h2>
-        <p>Hébergement du site : Vercel. Base de données : Neon. Envoi des e-mails : Resend. Si vous nous écrivez sur WhatsApp, l’échange relève des conditions de WhatsApp (Meta).</p>
+        <ul>
+          <li>Hébergement du site : Vercel.</li>
+          <li>Base de données : Neon.</li>
+          <li>Stockage des photos et des documents que vous envoyez : Cloudinary. Les documents privés ne sont accessibles qu’après connexion, par vous et par l’équipe.</li>
+          <li>Envoi des e-mails : Resend (ou Brevo selon la configuration).</li>
+          <li>Connexion avec Google, si vous la choisissez : Google reçoit la demande de connexion et nous transmet votre nom et votre adresse e-mail.</li>
+          <li>Notifications du navigateur, si vous les activez : le service de notification de votre navigateur (Google, Mozilla, Apple ou Microsoft).</li>
+          <li>WhatsApp (Meta), si vous nous écrivez par ce moyen.</li>
+        </ul>
         <h2>Vos droits</h2>
         <p>Vous pouvez demander à consulter, corriger ou supprimer vos données, ou vous opposer à leur utilisation, en nous contactant au {BUSINESS.phoneDisplay} ou à {BUSINESS.email}. Vous pouvez aussi saisir l’Instance de protection des données à caractère personnel (IPDCP).</p>
+        <p>Sur demande d’effacement, votre compte est anonymisé : nom, téléphone, e-mail, photo, profil, connexions et notifications sont effacés, ainsi que votre identité sur les devis, commandes et inscriptions sans facture. Les factures, paiements et attestations délivrées sont conservés tels quels, comme l’exigent les obligations comptables et la vérification des attestations.</p>
         <h2>Cookies</h2>
-        <p>Ce site n’utilise ni publicité ni mesure d’audience. Un seul cookie est déposé, uniquement si vous vous connectez à votre espace client : il garde votre session ouverte.</p>
+        <p>Ce site n’utilise ni publicité ni mesure d’audience. Il ne dépose que des cookies techniques, nécessaires au fonctionnement de votre compte, sans lesquels la connexion est impossible :</p>
+        <ul>
+          <li>Session : garde votre espace ouvert après connexion (30 jours au plus).</li>
+          <li>Appareil de confiance : évite de redemander le code Google Authenticator sur ce navigateur pendant 30 jours, si vous l’avez choisi.</li>
+          <li>Vérification en deux étapes : relie votre mot de passe au code demandé ensuite (10 minutes).</li>
+          <li>Connexion Google : protège l’aller-retour avec Google (10 minutes).</li>
+        </ul>
+        <p>Si vous l’autorisez (« Affichage rapide »), votre navigateur garde aussi une copie des photos et du catalogue du site pour l’afficher plus vite. Il garde enfin vos choix sur les notifications et sur les cookies. Vous pouvez changer d’avis à tout moment avec le lien « Gérer les cookies » en bas de chaque page, ou tout effacer depuis les réglages de votre navigateur.</p>
+        <h2>Conditions de vente</h2>
+        <p>Les devis, commandes et formations sont régis par nos <Link to="/conditions-generales">conditions générales</Link>.</p>
+      </div>
+    </main>
+  );
+}
+
+/** Conditions générales : devis, commandes, formations. Texte de base à faire relire par un juriste. */
+export function ConditionsGenerales() {
+  return (
+    <main id="contenu">
+      <PageHero crumbs={[{ label: 'Conditions générales' }]} eyebrow="Informations" title="Conditions générales" />
+      <div className="wrap legal">
+        <p>Ces conditions s’appliquent aux devis, commandes et formations de {LEGAL.legalName || BUSINESS.name}. Envoyer une demande ou accepter un devis vaut acceptation de ces conditions.</p>
+        <h2>Devis</h2>
+        <p>Chaque devis précise les travaux, les quantités, le prix en francs CFA (FCFA) et sa date de validité. Passé cette date, les prix peuvent être revus. Le devis est gratuit et n’engage pas tant que vous ne l’avez pas accepté, depuis votre espace client ou par écrit.</p>
+        <h2>Commande</h2>
+        <p>La commande est ferme à l’acceptation du devis. Si le devis prévoit un acompte, la fabrication commence à sa réception. Pour les travaux d’impression et d’enseigne, un bon à tirer (maquette) vous est soumis : sa validation vaut accord sur le texte, les couleurs et les dimensions.</p>
+        <h2>Paiement</h2>
+        <p>Le paiement se fait en espèces, par Mobile Money, par virement ou par un autre moyen accepté, selon les modalités indiquées sur le devis ou la facture. Aucun paiement n’est encaissé sur ce site. Chaque règlement est enregistré et apparaît dans votre espace client.</p>
+        <h2>Délais et retrait</h2>
+        <p>Les délais annoncés courent à partir de la validation du bon à tirer et, le cas échéant, de la réception de l’acompte. Les commandes se retirent à l’atelier, sauf livraison ou pose prévue au devis. Vous êtes prévenu dès que votre commande est prête.</p>
+        <h2>Vos fichiers et visuels</h2>
+        <p>Vous garantissez avoir le droit d’utiliser les textes, logos et images que vous nous confiez. Nous pouvons présenter les travaux réalisés dans notre galerie uniquement avec votre accord.</p>
+        <h2>Réclamations</h2>
+        <p>Signalez tout défaut dans les 7 jours suivant le retrait ou la livraison, photos à l’appui. Un défaut de fabrication de notre fait est corrigé ou refait. Une erreur présente sur un bon à tirer que vous avez validé n’ouvre pas droit à reprise gratuite.</p>
+        <h2>Annulation</h2>
+        <p>Une commande annulée après le début de la fabrication reste due à hauteur des travaux déjà engagés. L’acompte versé peut être conservé à ce titre.</p>
+        <h2>Formations</h2>
+        <p>La demande d’inscription est confirmée par l’équipe, qui vous indique les modalités de paiement. La place est réservée à la confirmation. Une attestation ou un certificat est remis selon les règles propres à chaque formation (assiduité, évaluation). En cas d’annulation de la session par {BUSINESS.name}, les sommes versées sont remboursées ou reportées sur une autre session.</p>
+        <h2>Données personnelles</h2>
+        <p>Voir la <Link to="/confidentialite">politique de confidentialité</Link>.</p>
+        <h2>Litiges</h2>
+        <p>Ces conditions relèvent du droit togolais. En cas de désaccord, nous cherchons d’abord une solution amiable ; à défaut, les tribunaux de Lomé sont compétents.</p>
       </div>
     </main>
   );

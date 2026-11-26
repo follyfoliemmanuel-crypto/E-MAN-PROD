@@ -12,7 +12,12 @@ import { PRESTATIONS, ALL_COURSES as COURSES } from '../src/content/seed.js';
 
 const dist = new URL('../dist/', import.meta.url).pathname;
 // Le modèle cite le domaine prévu : on le remplace par l'adresse réelle (SITE_URL).
-const template = readFileSync(join(dist, 'index.html'), 'utf8').replaceAll('https://www.emanprod.com', SITE_URL);
+// Google Search Console : GOOGLE_SITE_VERIFICATION = la valeur « content » de la balise fournie par Google.
+const gsv = String(process.env.GOOGLE_SITE_VERIFICATION || '').trim();
+const gsvTag = /^[A-Za-z0-9_-]{10,120}$/.test(gsv) ? `<meta name="google-site-verification" content="${gsv}" />\n    ` : '';
+if (gsv && !gsvTag) console.warn('⚠ GOOGLE_SITE_VERIFICATION ignorée : indiquez seulement la valeur content de la balise Google.');
+const template = readFileSync(join(dist, 'index.html'), 'utf8').replaceAll('https://www.emanprod.com', SITE_URL)
+  .replace('<link rel="canonical"', gsvTag + '<link rel="canonical"');
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 
 function render(path, meta) {
@@ -46,6 +51,14 @@ let n = 0;
 for (const [path, meta] of Object.entries(ROUTES)) { write(path, meta); n++; }
 for (const p of PRESTATIONS) { write(`/prestations/${p.slug}`, serviceMeta(p)); n++; }
 for (const c of COURSES) { write(`/formations/${c.slug}`, courseMeta(c)); n++; }
+
+// Page introuvable : Vercel sert 404.html avec le code 404 pour toute adresse inconnue
+// (vercel.json ne réécrit vers index.html que les routes connues). L'application y affiche « Page introuvable ».
+writeFileSync(join(dist, '404.html'), render('/404', {
+  title: 'Page introuvable | E-MAN PROD',
+  description: 'Cette page n’existe pas ou a été déplacée. Retrouvez les prestations et formations d’E-MAN PROD.',
+  noindex: true,
+}).replace(/\s*<link rel="canonical"[^>]*>/, ''));
 
 // Le plan du site (/sitemap.xml) est généré dynamiquement par /api/catalog.
 writeFileSync(join(dist, 'robots.txt'), `User-agent: *\nAllow: /\nDisallow: /espace\nDisallow: /api/\n\nSitemap: ${SITE_URL}/sitemap.xml\n`);

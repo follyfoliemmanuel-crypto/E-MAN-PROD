@@ -111,10 +111,10 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spaceRequest?.n]);
 
-  if (!ready) return <main id="contenu" className="wrap dash"><Loading /></main>;
+  if (!ready) return <main id="contenu" className="wrap dash spaceLoading"><Loading /></main>;
   if (!user) {
     return (
-      <main id="contenu">
+      <main id="contenu" className="spaceLoading">
         <header className="pageHead wrap">
           <h1 className="pageTitle">Espace client</h1>
           <p className="pageLead">Connectez-vous pour suivre vos devis, vos commandes, vos factures et vos inscriptions.</p>

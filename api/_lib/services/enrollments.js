@@ -59,9 +59,9 @@ export async function createEnrollment(actor, input) {
   }
   const userId = actor.role === 'guest' ? null : actor.id;
   const row = await one(
-    `insert into enrollments (full_name, phone, email, training_title, message, user_id, training_slug, session_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8) returning id`,
-    [input.name, input.phone, input.email ?? input.userEmail ?? null, data.title, input.message, userId, data.trainingSlug, data.sessionId],
+    `insert into enrollments (full_name, phone, email, training_title, message, user_id, training_slug, session_id, consent_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::timestamptz) returning id`,
+    [input.name, input.phone, input.email ?? input.userEmail ?? null, data.title, input.message, userId, data.trainingSlug, data.sessionId, input.consent_at ?? null],
   );
   await logActivity(actor, 'enrollment.created', 'enrollment', row.id, { training: data.trainingSlug || data.title, session_id: data.sessionId });
   await notifyTeam('trainings', {

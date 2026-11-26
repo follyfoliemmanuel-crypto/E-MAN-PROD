@@ -20,6 +20,9 @@ const createSchema = z.object({
   course_slug: s.optionalSlug('Formation'),
   session_id: s.optionalUuid('Session'),
   course: s.text('Formation', { min: 2, max: 120 }),
+  // Case « J’accepte… » (obligatoire sans compte) et champ piège invisible anti-robot.
+  consent: z.boolean().optional(),
+  website: z.string().max(300).optional(),
 });
 
 const patchSchema = z.object({
@@ -30,11 +33,15 @@ const patchSchema = z.object({
 export default handler({
   async POST(req, res) {
     const data = s.parse(createSchema, await readJson(req));
+    // Champ piège rempli : un robot. Réponse identique à un succès, rien n'est enregistré.
+    if (data.website) return send(res, 201, { ok: true, id: crypto.randomUUID() });
     await rateLimit(`training:phone:${data.phone}`, 5, 60, 'Trop de demandes envoyées avec ce numéro. Écrivez-nous sur WhatsApp.');
     await rateLimit(`training:ip:${clientIp(req)}`, 20, 60, 'Trop de demandes envoyées. Écrivez-nous sur WhatsApp.');
     const user = await currentUser(req);
+    if (!user && data.consent !== true) return send(res, 400, { error: 'Cochez la case d’accord sur l’utilisation de vos informations.' });
     const e = await enrollments.createEnrollment(actorOf(user), {
       ...data, training_slug: data.course_slug, userEmail: user?.email,
+      consent_at: data.consent === true ? new Date().toISOString() : null,
     });
     send(res, 201, { ok: true, id: e.id });
   },

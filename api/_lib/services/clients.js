@@ -5,6 +5,7 @@ import { logActivity, isTeam, notifyTeam, USER_EMAIL_CATEGORIES } from '../activ
 import { listQuotes } from './quotes.js';
 import { listOrders } from './orders.js';
 import { listEnrollments } from './enrollments.js';
+import { deleteFile } from './files.js';
 
 const PROFILE_COLS = 'client_type, company_name, address, city, whatsapp, preferred_contact, updated_at';
 
@@ -154,4 +155,54 @@ export async function setAvatar(actor, fileId) {
   await query('update users set avatar_file_id = $2 where id = $1 returning id', [actor.id, fileId]);
   await logActivity(actor, 'client.avatar', 'user', actor.id, {});
   return { avatar_file_id: fileId, previous: prev?.avatar_file_id || null };
+}
+
+/**
+ * Droit à l'effacement : anonymise un compte CLIENT en une seule requête (tout ou rien).
+ * Effacé : identité, téléphone, e-mail, photo, profil, connexions Google, sessions, appareils,
+ * notifications, abonnements push, avis. Conservé sans identité : devis et commandes sans facture,
+ * inscriptions sans attestation. Conservé tel quel (obligation comptable ou attestation vérifiable) :
+ * factures, paiements, attestations délivrées. Les journaux techniques (activity_logs, email_log)
+ * sont en ajout seul : leur purge se fait avec le compte propriétaire (voir docs/A-FAIRE-MANUELLEMENT.md).
+ */
+export async function anonymizeClient(actor, userId) {
+  const ANON = 'Client supprimé';
+  const rows = await query(
+    `with target as (select id, avatar_file_id from users where id = $1 and role = 'client' and email not like 'supprime-%@anonyme.invalid' for update),
+     d1 as (delete from sessions where user_id in (select id from target) returning 1),
+     d2 as (delete from accounts where user_id in (select id from target) returning 1),
+     d3 as (delete from trusted_devices where user_id in (select id from target) returning 1),
+     d4 as (delete from push_subscriptions where user_id in (select id from target) returning 1),
+     d5 as (delete from mfa_recovery_codes where user_id in (select id from target) returning 1),
+     d6 as (delete from verification_tokens where user_id in (select id from target) returning 1),
+     d7 as (delete from notifications where user_id in (select id from target) returning 1),
+     d8 as (delete from client_profiles where user_id in (select id from target) returning 1),
+     d9 as (delete from testimonials where user_id in (select id from target) returning 1),
+     d10 as (delete from presence where user_id in (select id from target) returning 1),
+     q as (update quotes set customer_name = $2, customer_phone = '—', customer_email = null, customer_company = null
+           where user_id in (select id from target)
+             and not exists (select 1 from orders o join invoices i on i.order_id = o.id where o.quote_id = quotes.id) returning 1),
+     o as (update orders set customer_name = $2, customer_phone = '—', customer_email = null
+           where user_id in (select id from target) and not exists (select 1 from invoices i where i.order_id = orders.id) returning 1),
+     e as (update enrollments set full_name = $2, phone = '—', email = null
+           where user_id in (select id from target) and not exists (select 1 from certificates c where c.enrollment_id = enrollments.id) returning 1),
+     u as (update users set email = 'supprime-' || id || '@anonyme.invalid', full_name = $2, first_name = null, last_name = null,
+             phone = null, password_hash = null, email_verified_at = null, avatar_file_id = null, public_name = null, job_title = null,
+             bio = null, notification_prefs = '{}'::jsonb, show_last_seen = false, mfa_secret_enc = null, mfa_pending_enc = null,
+             mfa_enabled_at = null, mfa_last_step = null, disabled_at = coalesce(disabled_at, now())
+           where id in (select id from target) returning id)
+     select t.avatar_file_id, (select count(*) from u)::int as done, (select count(*) from q)::int as quotes,
+            (select count(*) from o)::int as orders, (select count(*) from e)::int as enrollments
+     from target t`,
+    [userId, ANON]);
+  if (!rows.length) {
+    const exists = await one(`select role, email from users where id = $1`, [userId]);
+    if (!exists) throw new HttpError(404, 'Client introuvable.');
+    if (exists.role !== 'client') throw new HttpError(409, 'Seul un compte client peut être anonymisé. Pour un membre de l’équipe, désactivez le compte.');
+    throw new HttpError(409, 'Ce compte est déjà anonymisé.');
+  }
+  const r = rows[0];
+  if (r.avatar_file_id) await deleteFile(actor, r.avatar_file_id).catch(() => {});
+  await logActivity(actor, 'client.anonymized', 'user', userId, { quotes: r.quotes, orders: r.orders, enrollments: r.enrollments });
+  return { ok: true, quotes: r.quotes, orders: r.orders, enrollments: r.enrollments };
 }

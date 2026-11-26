@@ -165,6 +165,13 @@ function ClientDetail({ id, isAdmin, notify, onClose, onChanged }) {
               act(() => security.disable(id, !c.user.disabled_at), c.user.disabled_at ? 'Compte réactivé.' : 'Compte désactivé.');
             }
           }}>{c.user.disabled_at ? 'Réactiver le compte' : 'Désactiver le compte'}</button>
+          {!/@anonyme\.invalid$/.test(c.user.email || '') && (
+            <button type="button" className="btn btnSmall btnDanger" data-action="anonymize" onClick={async () => {
+              if (await confirm({ title: 'Anonymiser ce client ?', text: 'Demande d’effacement des données : nom, téléphone, e-mail, photo, profil, connexions et notifications sont effacés définitivement. Les factures, paiements et attestations délivrées sont conservés tels quels ; les autres devis, commandes et inscriptions restent, sans son identité. Action irréversible.', confirm: 'Anonymiser définitivement', danger: true })) {
+                act(() => security.anonymize(id), 'Client anonymisé.');
+              }
+            }}>Anonymiser (droit à l’effacement)</button>
+          )}
         </div>
       )}
     </section>

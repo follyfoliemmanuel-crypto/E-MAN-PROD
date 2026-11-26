@@ -4,6 +4,7 @@
 //            soit une photo envoyée depuis le tableau de bord (file_id, stockée sur Cloudinary)
 //   DELETE : revenir au visuel par défaut (équipe « contenu »)
 // Une photo remplacée ou retirée est aussi effacée chez Cloudinary (plus de fichier orphelin).
+import { resignStoredUrl } from './_lib/storage/cloudinary.js';
 import { query, one } from './_lib/db.js';
 import { handler, send, readJson, HttpError } from './_lib/http.js';
 import { requirePermission } from './_lib/auth.js';
@@ -28,6 +29,14 @@ function srcsetOf(r) {
   } catch { return undefined; }
 }
 
+/** Supprime le fichier d'une ancienne photo, seulement si plus aucun emplacement ne l'utilise. */
+async function removeIfUnused(fileId) {
+  const used = await one(
+    `select 1 as x from site_media m, uploaded_files f
+      where f.id = $1 and (m.file_id = f.id or position(f.storage_key in m.url) > 0) limit 1`, [fileId]);
+  if (!used) await deleteStoredFile(fileId).catch(() => {});
+}
+
 function slot(value) {
   if (typeof value !== 'string' || !/^[a-z0-9-]{2,60}$/.test(value)) throw new HttpError(400, 'Emplacement invalide.');
   return value;
@@ -40,7 +49,7 @@ export default handler({
               f.remote_version, f.remote_format, f.visibility, f.width
          from site_media m left join uploaded_files f on f.id = m.file_id and f.status = 'ready' order by m.slot`);
     const media = Object.fromEntries(rows.map((r) => [r.slot, {
-      url: r.url, alt: r.alt,
+      url: resignStoredUrl(r.url), alt: r.alt,
       ...(r.focus ? { focus: r.focus } : {}), ...(r.focus_mobile ? { focus_mobile: r.focus_mobile } : {}),
       ...(srcsetOf(r) ? { srcset: srcsetOf(r) } : {}),
     }]));
@@ -75,7 +84,21 @@ export default handler({
     } else {
       url = v.imageUrl(body.url);
     }
-    const previous = await one('select file_id from site_media where slot = $1', [s]);
+    const previous = await one(
+      `select m.file_id, m.url, f.storage_key from site_media m left join uploaded_files f on f.id = m.file_id where m.slot = $1`, [s]);
+    if (!fileId) {
+      // Adresse d'une photo DÉJÀ envoyée sur le site (le formulaire renvoie l'adresse actuelle quand on
+      // ne change que la description) : c'est la même photo → on garde son fichier, rien n'est supprimé.
+      const sig = (u) => String(u || '').replace(/^https?:\/\/[^/]+/, '').replace(/\/s--[A-Za-z0-9_-]{8}--\//, '/');
+      if (previous?.file_id && (sig(url) === sig(previous.url) || (previous.storage_key && url.includes(previous.storage_key)))) {
+        fileId = previous.file_id;
+      } else {
+        const own = await one(
+          `select id from uploaded_files where purpose = 'site_media' and status = 'ready' and position(storage_key in $1) > 0 limit 1`, [url]);
+        if (own) fileId = own.id;
+      }
+      if (fileId) url = await publicImageUrl(fileId);
+    }
     const row = await one(
       `insert into site_media (slot, url, alt, credit, file_id, updated_by) values ($1, $2, $3, $4, $5, $6)
        on conflict (slot) do update set url = excluded.url, alt = excluded.alt, credit = excluded.credit,
@@ -84,7 +107,7 @@ export default handler({
        returning slot, url, alt, credit, file_id, updated_at`,
       [s, url, v.text(body.alt, 'Description', { min: 3, max: 200, required: true }), v.text(body.credit, 'Crédit', { max: 200 }), fileId, admin.id],
     );
-    if (previous?.file_id && previous.file_id !== fileId) await deleteStoredFile(previous.file_id).catch(() => {});
+    if (previous?.file_id && previous.file_id !== fileId) await removeIfUnused(previous.file_id);
     send(res, 200, { item: row });
   },
 
@@ -93,7 +116,7 @@ export default handler({
     const body = await readJson(req);
     const previous = await one('select file_id from site_media where slot = $1', [slot(body.slot)]);
     await query('delete from site_media where slot = $1 returning slot', [slot(body.slot)]);
-    if (previous?.file_id) await deleteStoredFile(previous.file_id).catch(() => {});
+    if (previous?.file_id) await removeIfUnused(previous.file_id);
     send(res, 200, { ok: true });
   },
 });

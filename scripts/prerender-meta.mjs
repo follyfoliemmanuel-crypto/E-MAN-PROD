@@ -24,7 +24,9 @@ function render(path, meta) {
     .replace(/(<link rel="canonical" href=")[^"]*/, `$1${url}`)
     .replace(/(<meta property="og:title" content=")[^"]*/, `$1${esc(meta.title)}`)
     .replace(/(<meta property="og:description" content=")[^"]*/, `$1${esc(meta.description)}`)
-    .replace(/(<meta property="og:url" content=")[^"]*/, `$1${url}`);
+    .replace(/(<meta property="og:url" content=")[^"]*/, `$1${url}`)
+    .replace(/(<meta name="twitter:title" content=")[^"]*/, `$1${esc(meta.title)}`)
+    .replace(/(<meta name="twitter:description" content=")[^"]*/, `$1${esc(meta.description)}`);
   if (meta.jsonLd) {
     // « </ » échappé : le JSON ne peut pas fermer la balise script.
     const ld = JSON.stringify(meta.jsonLd).replace(/<\//g, '<\\/');

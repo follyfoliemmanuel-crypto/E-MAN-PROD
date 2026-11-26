@@ -1,5 +1,6 @@
 // Contenu géré par l'administration : formations, catégories, sessions, prestations,
 // réalisations, avis clients, réglages du site. Et lecture publique du catalogue.
+import { resignStoredUrl } from '../storage/cloudinary.js';
 import { query, one } from '../db.js';
 import { HttpError } from '../http.js';
 import { logActivity, notifyTeam } from '../activity.js';
@@ -356,7 +357,7 @@ export async function loadCatalog({ all = false } = {}) {
     prestations: services,
     poles: categories,
     courses: trainings.map((c) => ({ ...c, sessions: byTraining[c.slug] || [] })),
-    gallery: portfolio,
+    gallery: portfolio.map((g) => ({ ...g, image_url: resignStoredUrl(g.image_url) })),
     galleryCategories: portfolioCategories,
     testimonials,
     content: Object.fromEntries(settings.map((b) => [b.key, b.value])),

@@ -576,9 +576,9 @@ export function ProfileSheet({ open, onClose, children, title }) {
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="sheetBackdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <aside className="sheet" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
-        <button type="button" className="iconBtn sheetClose" onClick={onClose} aria-label="Fermer"><X size={20} aria-hidden="true" /></button>
+    <div className="sideBackdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <aside className="sidePanel" role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} ref={ref}>
+        <button type="button" className="iconBtn sideClose" onClick={onClose} aria-label="Fermer"><X size={20} aria-hidden="true" /></button>
         {children}
       </aside>
     </div>

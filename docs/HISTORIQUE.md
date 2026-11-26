@@ -1,5 +1,26 @@
 # Historique des versions et des vérifications
 
+## v4.1.2 — Photos qui disparaissaient, fenêtre de connexion sur téléphone, aperçu des liens
+
+- **Photos du site (bannière 2 et 3…)** : cause trouvée et reproduite. Dans « Images et bannières »,
+  « Enregistrer » (pour changer une description) renvoyait l'adresse de la photo comme une adresse
+  web ordinaire : le serveur détachait la photo de son fichier et SUPPRIMAIT ce fichier chez
+  Cloudinary. La photo disparaissait ensuite (visuel par défaut). Corrigé : une adresse qui désigne
+  une photo du site garde son fichier ; un fichier n'est jamais supprimé tant qu'un emplacement
+  l'utilise. Les adresses Cloudinary enregistrées sont re-signées à l'affichage (clé régénérée sans
+  effet). Une photo introuvable est signalée dans l'admin (« Renvoyez-la »).
+  Réparation des données : db/reparation-photos.sql (rattache ce qui peut l'être, liste les photos à renvoyer).
+- **Fenêtre de connexion sur téléphone** : depuis la v4.0, une règle du panneau de profil de la
+  messagerie (même nom « sheet ») écrasait celle de la fenêtre : elle s'ouvrait en partie hors de
+  l'écran (jusqu'à 800 px trop haut). Panneau renommé ; replis « vh » pour les navigateurs qui ne
+  connaissent pas « dvh/svh » (Android et iOS plus anciens).
+- **Aperçu des liens** (WhatsApp, Facebook, LinkedIn, X) : balises complétées sur les 31 pages
+  (image sécurisée, type, texte alternatif, balises X). Fonctionne sur le domaine déclaré dans SITE_URL
+  (sinon le domaine de production Vercel).
+- Tests : connexion 78/78 (10 appareils, texte 130 %, ancien navigateur ; v4.1.1 : 20 échecs),
+  bannière 12/12, secours 19/19, carrousel 33/33, 10 photos 15/15, aperçus 287/287 par domaine,
+  régression complète, en-tête 86/86, messagerie 63/63 et 35/35, admin 37/37 et 21/21, responsive 0 problème.
+
 ## v4.1.1 — Bannière : une photo ne disparaît plus ; remise à zéro avant la production
 
 - Bannière et images du site : quand une taille adaptée à l'écran est refusée par le navigateur ou

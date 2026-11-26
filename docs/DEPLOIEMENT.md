@@ -123,3 +123,17 @@ Le code suppose des fonctions serverless Node au format Vercel (`api/*.js`, `exp
    être en 012 (v4.0) : sinon le fichier s'arrête sans rien modifier.
 2. Déployer sur Vercel. Aucune nouvelle variable.
 3. Dans « Images et bannières », bouton « Cadrage » sur chaque photo dont le sujet n'est pas centré.
+
+## Sécurisation de la base (avant l'ouverture)
+
+1. Neon → SQL Editor → `db/securite-base.sql` → Run (compte propriétaire). Copier le mot de passe
+   affiché pour « eman_app » (montré une seule fois ; relancer le script en crée un nouveau).
+2. Vercel → Environment Variables (Production) :
+   `DATABASE_URL_OWNER` = l'ancienne `DATABASE_URL` ; `DATABASE_URL` = même adresse avec
+   l'utilisateur `eman_app` et le nouveau mot de passe. Redeploy.
+3. Le site ne peut plus créer, modifier, vider ni supprimer de table, ni effacer le journal
+   d'activité, ni remplacer la clé Google Authenticator. Testé : 13 tentatives refusées,
+   toutes les suites (messagerie, MFA, commandes, envois, temps réel) passent avec ce compte.
+
+Sauvegarde SQL facultative avant la remise à zéro : `db/securite-1-sauvegarde.sql`,
+restauration `db/securite-2-restauration.sql`, suppression `db/securite-3-suppression-sauvegarde.sql`.

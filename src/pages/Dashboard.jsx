@@ -461,10 +461,12 @@ function MediaRow({ def, current, onSaved, notify }) {
   const [alt, setAlt] = useState(custom ? current.alt : '');
   const [credit, setCredit] = useState('');
   const [busy, setBusy] = useState(false);
+  const [broken, setBroken] = useState(false);
 
   useEffect(() => {
     setUrl(custom ? current.url : '');
     setAlt(custom ? current.alt : '');
+    setBroken(false);
   }, [custom, current?.url, current?.alt]);
 
   async function save(e) {
@@ -515,13 +517,19 @@ function MediaRow({ def, current, onSaved, notify }) {
   return (
     <li className="mediaRow">
       {custom || !def.optional
-        ? <SmartImage slot={def.slot} fallback={def.fallback} className="mediaThumb" />
+        ? <SmartImage slot={def.slot} fallback={def.fallback} className="mediaThumb" onBroken={() => setBroken(true)} />
         : <span className="mediaThumb mediaEmpty">Aucune photo : cette diapositive n’apparaît pas sur l’accueil.</span>}
       <form className="mediaForm" onSubmit={save}>
         <div className="mediaHead">
           <strong>{def.label}</strong>
           <span className={'tag ' + (custom ? 'done' : 'new')}>{custom ? 'Photo personnalisée' : def.optional ? 'Vide (masquée)' : 'Visuel provisoire'}</span>
         </div>
+        {custom && broken && (
+          <p className="mediaAlert" role="alert">
+            Cette photo ne s’affiche plus sur le site (son fichier est introuvable chez Cloudinary) : le visuel par
+            défaut est montré à sa place. Renvoyez-la avec « Envoyer une photo ».
+          </p>
+        )}
         <label className="field"><span className="fieldLabel">Envoyer une photo</span>
           <input type="file" accept=".jpg,.jpeg,.png,.webp" disabled={busy} onChange={sendPhoto} />
         </label>

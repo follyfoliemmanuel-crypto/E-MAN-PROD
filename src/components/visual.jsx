@@ -12,7 +12,7 @@ const reduceMotion = () => typeof window !== 'undefined' && window.matchMedia?.(
 // Image d'un emplacement : fond coloré pendant le chargement, fondu à
 // l'arrivée, retour au visuel provisoire si l'adresse ne répond pas.
 // ---------------------------------------------------------------------------
-export function SmartImage({ slot, fallback, className = '', eager = false, sizes, onFail }) {
+export function SmartImage({ slot, fallback, className = '', eager = false, sizes, onFail, onBroken }) {
   const media = useMedia().get(slot, fallback);
   // Essais successifs, pour qu'une photo ne disparaisse jamais :
   //   0 : taille adaptée à l'écran (srcset)   1 : adresse unique de la photo (comme avant la v4.1)
@@ -41,6 +41,7 @@ export function SmartImage({ slot, fallback, className = '', eager = false, size
       console.warn(`[E-MAN PROD] photo « ${slot} » : taille adaptée refusée, repli sur l’adresse d’origine.`, ref.current?.currentSrc || '');
       setStage(1); return;
     }
+    if (!media.placeholder) onBroken?.(slot); // photo personnalisée introuvable (signalée dans l'admin)
     if (stage <= 1 && media.fallback && media.fallback !== media.url) { setStage(2); return; }
     setStage(3); onFail?.(slot);
   };

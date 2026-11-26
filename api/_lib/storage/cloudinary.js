@@ -60,6 +60,22 @@ export function deliverySignature(path, secret) {
   return createHash('sha1').update(path + secret).digest('base64url').slice(0, 8);
 }
 
+/**
+ * Adresse Cloudinary enregistrée en base (photo du site, réalisation) → même adresse, signée avec la
+ * clé ACTUELLE. Une adresse signée avec une ancienne clé (clé secrète régénérée chez Cloudinary)
+ * serait refusée par Cloudinary : la photo ne s'afficherait plus. Toute autre adresse est rendue telle quelle.
+ */
+export function resignStoredUrl(url, env = process.env) {
+  if (typeof url !== 'string') return url;
+  const { config: cfg } = cloudinaryConfig(env);
+  if (!cfg) return url;
+  const base = `${cfg.delivery}/${cfg.cloud}/`;
+  if (!url.startsWith(base)) return url;
+  const m = url.slice(base.length).match(/^(image|raw|video)\/(upload|authenticated|private)\/s--[A-Za-z0-9_-]{8}--\/([^?#]+)$/);
+  if (!m) return url;
+  return `${base}${m[1]}/${m[2]}/s--${deliverySignature(m[3], cfg.secret)}--/${m[3]}`;
+}
+
 /** Variantes d'affichage des images (l'original n'est jamais modifié). */
 export const VARIANTS = {
   gallery: 'c_limit,w_1600/f_auto,q_auto',

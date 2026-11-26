@@ -190,3 +190,17 @@ Un fichier peut avoir l'apparence d'une photo ou d'un PDF tout en transportant a
 - Lecture des vocaux par `/api/files?stream=1` : mêmes droits que le téléchargement, audio uniquement, 10 Mo au plus, `nosniff`, CSP `sandbox`, cache privé. Les fichiers restent privés chez Cloudinary.
 - Envoi idempotent (`client_ref`, index unique par auteur) : aucun doublon possible côté base.
 - Relecture de secours (`chat=pulse`) limitée à 60 requêtes par minute et par personne.
+
+## v4.1.3 — Audit ciblé (méthode « security-audit », lecture du code + preuve locale)
+
+| Domaine | Résultat |
+|---|---|
+| Connexion, sessions, cookies __Host-, Argon2id, limites | aucune faille |
+| Double authentification, appareils de confiance, réinitialisation | aucune faille |
+| Liens des e-mails (en-tête Host) | protégé en production (SITE_URL / domaine Vercel) |
+| Droits client ↔ client et client ↔ équipe (devis, commandes, factures, reçus, inscriptions, fichiers, messagerie) | aucune faille |
+| Rôles et permissions (admin seul + reconfirmation) ; profil (champs autorisés) | aucune faille |
+| CSRF (Origin, Sec-Fetch-Site, JSON), XSS (CSP stricte), SQL (paramètres) | aucune faille |
+| Secrets dans le code du navigateur | aucun (seulement des noms de variables dans l'aide) |
+| Notifications push (adresse du service) | liste fermée de services : pas de SSRF |
+| **Re-signature des adresses Cloudinary (v4.1.2)** | **faille corrigée** : signait l'adresse d'un fichier privé collée par l'équipe « contenu » → lien public valide. Limité aux photos publiques du site. Test : p24/oracle.py |

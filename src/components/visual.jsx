@@ -46,6 +46,8 @@ export function SmartImage({ slot, fallback, className = '', eager = false, size
     setStage(3); onFail?.(slot);
   };
 
+  // Photos du site pas encore connues : emplacement neutre, la vraie photo apparaîtra en fondu.
+  if (media?.pending) return <span className={'smartImg ' + className} data-loaded={false} data-pending="" aria-hidden="true" />;
   if (!media || stage === 3 || !src) return null;
   // Photo envoyée depuis l'admin : le navigateur choisit la taille adaptée à l'écran (léger sur
   // téléphone, net sur grand écran) ; point de cadrage choisi dans l'admin (sinon centré).

@@ -1,5 +1,23 @@
 # Historique des versions et des vérifications
 
+## v4.1.3 — Audit de sécurité ciblé, bannière sans flash, « Partager le site »
+
+- **Sécurité (audit ciblé, corrigé)** : la re-signature des adresses Cloudinary ajoutée en v4.1.2
+  signait n'importe quelle adresse du compte. Un membre de l'équipe « contenu » pouvait enregistrer,
+  comme photo du site, l'adresse d'une pièce jointe PRIVÉE d'un client : /api/media (public)
+  renvoyait alors un lien valide vers ce fichier. Reproduit (réponse 200), corrigé : seules les photos
+  publiques du site et des réalisations, dans les tailles prévues, sont re-signées (fichier privé : 401).
+  Revu sans autre faille : connexion, sessions, double authentification, réinitialisation, droits
+  client/équipe (devis, commandes, factures, reçus, inscriptions, fichiers, messagerie, profils, rôles),
+  CSRF, XSS, SQL, CSP, secrets côté navigateur, abonnements aux notifications.
+- **Bannière** : plus de visuel par défaut affiché avant les vraies photos (liste demandée dès le
+  démarrage, gardée sur l'appareil, fond neutre en attendant ; visuels par défaut après 3 s sans réponse).
+- **« Partager le site »** (tableau de bord client et équipe) : aperçu du lien, copie, partage du
+  téléphone, WhatsApp, Facebook.
+- Tests : régression complète, sécurité re-signature 5/5, sans flash 5/5 (v4.1.2 : 3 échecs),
+  partage 60/60, connexion 78/78, bannière 12/12, secours 19/19, carrousel 33/33, 10 photos 15/15,
+  en-tête 86/86, messagerie 63/63 et 35/35, admin 37/37 et 21/21, responsive 0 problème.
+
 ## v4.1.2 — Photos qui disparaissaient, fenêtre de connexion sur téléphone, aperçu des liens
 
 - **Photos du site (bannière 2 et 3…)** : cause trouvée et reproduite. Dans « Images et bannières »,

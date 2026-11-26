@@ -13,6 +13,7 @@ import {
 import { useLoad, Loading, ErrorBox, EmptyState, SectionHead, StatCard } from './ui.jsx';
 import { LimitHint } from '../../lib/limits.jsx';
 import { Avatar } from '../../components/Avatar.jsx';
+import { ShareSite } from './share.jsx';
 
 const size = (b) => (b > 1048576 ? `${(b / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(b / 1024))} Ko`);
 const ACCEPT = '.jpg,.jpeg,.png,.webp,.pdf,.ai,.eps,.psd,.cdr,.zip';
@@ -74,6 +75,7 @@ export function ClientHome({ user, go, unread }) {
           </section>
         </>
       )}
+      <ShareSite />
     </>
   );
 }

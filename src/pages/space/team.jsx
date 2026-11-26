@@ -8,6 +8,7 @@ import { useCatalog } from '../../lib/catalog.jsx';
 import { DEMO, space, manage, fetchCatalog, security, formatAmount, formatDate, QUOTE_LABELS, ORDER_LABELS } from '../../lib/api.js';
 import { useLoad, Loading, ErrorBox, EmptyState, SectionHead, StatCard, MonthChart, BarList, useConfirm } from './ui.jsx';
 import { SupportThread } from './client.jsx';
+import { ShareSite } from './share.jsx';
 
 const fmt = (n) => Number(n || 0).toLocaleString('fr-FR');
 const TYPES = { particulier: 'Particulier', entreprise: 'Entreprise', association: 'Association', etablissement: 'Établissement' };
@@ -66,6 +67,7 @@ export function TeamHome({ user, go }) {
           <p className="muted small">Mis à jour le {new Date(data.generated_at).toLocaleString('fr-FR')}.</p>
         </>
       )}
+      <ShareSite />
     </>
   );
 }

@@ -71,9 +71,19 @@ export function resignStoredUrl(url, env = process.env) {
   if (!cfg) return url;
   const base = `${cfg.delivery}/${cfg.cloud}/`;
   if (!url.startsWith(base)) return url;
-  const m = url.slice(base.length).match(/^(image|raw|video)\/(upload|authenticated|private)\/s--[A-Za-z0-9_-]{8}--\/([^?#]+)$/);
+  // SÉCURITÉ : on ne signe QUE ce que le site publie lui-même — une photo PUBLIQUE (image/upload)
+  // des photos du site ou des réalisations, dans une des tailles prévues. Jamais un fichier privé
+  // (devis, commande, messagerie : type « authenticated »), jamais une transformation inventée :
+  // sinon une adresse collée dans l'admin ferait signer l'accès à un fichier d'un client.
+  const m = url.slice(base.length).match(/^image\/upload\/s--[A-Za-z0-9_-]{8}--\/(.+)$/);
   if (!m) return url;
-  return `${base}${m[1]}/${m[2]}/s--${deliverySignature(m[3], cfg.secret)}--/${m[3]}`;
+  const path = m[1];
+  const variant = PUBLIC_SIGNABLE.find((t) => path.startsWith(`${t}/`));
+  if (!variant) return url;
+  const rest = path.slice(variant.length + 1);
+  const folder = cfg.folder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!new RegExp(`^v\\d{1,12}/${folder}/(site_media|portfolio)/[A-Za-z0-9/_-]{1,200}\\.(jpg|png|webp)$`).test(rest)) return url;
+  return `${base}image/upload/s--${deliverySignature(path, cfg.secret)}--/${path}`;
 }
 
 /** Variantes d'affichage des images (l'original n'est jamais modifié). */
@@ -91,6 +101,8 @@ export const VARIANTS = {
   w3200: 'c_limit,w_3200/f_auto,q_auto:good',
 };
 export const RESPONSIVE_WIDTHS = [480, 800, 1200, 1600, 2400, 3200];
+/** Variantes publiques qu'une adresse enregistrée peut porter (re-signature autorisée). */
+const PUBLIC_SIGNABLE = ['gallery', 'thumb', 'w480', 'w800', 'w1200', 'w1600', 'w2400', 'w3200'].map((k) => VARIANTS[k]);
 
 const IMAGE_FORMATS = ['jpg', 'png', 'webp'];
 export const resourceTypeOf = (ext) => (IMAGE_FORMATS.includes(ext) ? 'image' : 'raw');

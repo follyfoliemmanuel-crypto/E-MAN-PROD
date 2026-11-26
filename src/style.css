@@ -1602,3 +1602,24 @@ html[data-space='client'] .spaceMain { padding-bottom: max(96px, clamp(20px, 3vw
 
 /* Admin : photo personnalisée introuvable */
 .mediaAlert { margin: 0; padding: 10px 12px; border-radius: 8px; background: #fdecec; color: #8a1016; font-weight: 600; border-left: 4px solid var(--red); }
+
+/* Partager le site (espaces client et équipe) */
+.shareSite { max-width: 640px; }
+.sharePreview { display: grid; grid-template-columns: minmax(0, 1fr); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; color: inherit; text-decoration: none; background: var(--plate); transition: box-shadow .2s var(--ease); }
+.sharePreview:hover { box-shadow: 0 8px 24px rgba(15, 27, 61, .12); }
+.sharePreview img { display: block; width: 100%; height: auto; aspect-ratio: 1200 / 630; object-fit: cover; background: var(--navy); }
+.shareText { display: grid; gap: 4px; padding: 12px 14px; min-width: 0; }
+.shareHost { font-size: .8rem; color: var(--muted); text-transform: lowercase; overflow-wrap: anywhere; }
+.shareText strong { font-size: 1rem; line-height: 1.3; }
+.shareDesc { font-size: .88rem; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.shareLink { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.shareLink input { flex: 1; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--rule); border-radius: 10px; font: inherit; background: #fff; }
+.shareLink .btn { flex: none; }
+.shareActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.shareNote { margin: 0; min-height: 1.2em; color: var(--muted); }
+@media (max-width: 480px) {
+  .shareLink { flex-wrap: wrap; }
+  .shareLink svg { display: none; }
+  .shareLink input, .shareLink .btn { width: 100%; flex: 1 1 100%; }
+  .shareActions .btn { flex: 1 1 auto; justify-content: center; }
+}

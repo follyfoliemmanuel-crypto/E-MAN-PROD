@@ -1,5 +1,24 @@
 # Historique des versions et des vérifications
 
+## v4.2.1 — Confirmation de l'adresse e-mail à l'inscription
+
+Signalé en production : après l'inscription, le lien de l'e-mail menait à la connexion, puis
+« E-mail ou mot de passe incorrect ».
+
+- **Cause** : quand l'adresse avait déjà un compte (première tentative, ancien compte de test),
+  le site envoyait « Vous avez déjà un compte » avec un simple bouton « Me connecter ». La personne
+  tapait le mot de passe qu'elle venait de choisir, alors que le compte gardait l'ancien.
+- **Correction** : cet e-mail mène maintenant à « Choisissez votre mot de passe » ; en l'enregistrant,
+  l'adresse est confirmée et la personne est connectée directement. Le mot de passe tapé lors d'une
+  réinscription n'est jamais appliqué tout seul (sinon un tiers pourrait prendre un compte).
+- **Lien de confirmation** : une fenêtre « Dernière étape — Confirmer mon adresse » demande un clic
+  avant d'utiliser le lien. Un logiciel de messagerie qui ouvre les liens à l'avance ne peut plus
+  consommer le lien à la place de la personne. Après le clic : adresse confirmée, connecté, espace client.
+- **Messages précis** : lien déjà utilisé → « adresse déjà confirmée » + fenêtre de connexion ;
+  lien remplacé par un e-mail plus récent ; lien expiré → bouton pour recevoir un nouveau lien.
+- Tests : nouvelle suite navigateur « inscription et confirmation » 17/17 avec un faux fournisseur
+  d'e-mails (inscription, robot qui ouvre le lien, clic, deuxième clic, réinscription) ; e-mails 159/159.
+
 ## v4.2.0 — Corrections de l'audit avant production, bandeau cookies, SQL de production
 
 - **Légal** : page Conditions générales ; politique de confidentialité corrigée (Cloudinary, Google,

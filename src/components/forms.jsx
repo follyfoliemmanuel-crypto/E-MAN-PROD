@@ -366,7 +366,7 @@ export function AuthForm({ onDone, notify, startDemo, google = false, initialMod
   );
 }
 
-export function NewPasswordForm({ token, onDone, notify, onMfa }) {
+export function NewPasswordForm({ token, onDone, notify, onMfa, welcome = false }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -378,7 +378,7 @@ export function NewPasswordForm({ token, onDone, notify, onMfa }) {
       const r = await auth.reset({ token, password });
       if (r.mfa_required) { notify('Mot de passe enregistré. Confirmez avec Google Authenticator.'); onMfa?.(); return; }
       onDone(r.user);
-      notify('Mot de passe enregistré. Vous êtes connecté.');
+      notify(welcome ? 'Adresse confirmée, vous êtes connecté. Bienvenue chez E-MAN PROD !' : 'Mot de passe enregistré. Vous êtes connecté.');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -387,12 +387,48 @@ export function NewPasswordForm({ token, onDone, notify, onMfa }) {
   }
   return (
     <form className="form" onSubmit={onSubmit}>
-      <h2 className="formTitle">Choisir un nouveau mot de passe</h2>
+      <h2 className="formTitle">{welcome ? 'Choisissez votre mot de passe' : 'Choisir un nouveau mot de passe'}</h2>
+      {welcome && <p className="muted formIntro">Votre adresse avait déjà un compte. Choisissez le mot de passe à utiliser désormais : votre adresse est confirmée et vous êtes connecté directement.</p>}
       <Field label="Nouveau mot de passe" hint="10 caractères minimum. Une courte phrase est plus sûre et plus facile à retenir.">
         <PasswordInput required minLength={10} maxLength={128} autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </Field>
       <ErrorLine error={error} />
       <Submit busy={busy}>Enregistrer le mot de passe</Submit>
+    </form>
+  );
+}
+
+/**
+ * Lien de confirmation reçu par e-mail : un clic confirme l'adresse, active le mot de passe choisi
+ * à l'inscription et ouvre la session. Le clic est demandé exprès : certains logiciels de messagerie
+ * ouvrent les liens à l'avance, ils ne doivent pas pouvoir confirmer à la place de la personne.
+ */
+export function VerifyEmailForm({ token, onDone, notify, onMfa, onLogin, onSignup }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  async function onSubmit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await auth.verify({ token });
+      if (r.alreadyVerified) { notify('Votre adresse est déjà confirmée. Connectez-vous avec votre e-mail et votre mot de passe.'); onLogin(); return; }
+      if (r.mfa_required) { notify('Adresse confirmée. Entrez le code Google Authenticator.'); onMfa(); return; }
+      onDone(r.user, r.claimed);
+    } catch (err) {
+      setError({ message: err.message, code: err.data?.code });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <form className="form" onSubmit={onSubmit} data-verify-form>
+      <h2 className="formTitle">Dernière étape</h2>
+      <p className="muted formIntro">Confirmez votre adresse e-mail : votre compte est activé et vous êtes connecté directement, sans retaper votre mot de passe.</p>
+      {error && <ErrorLine error={error.message} />}
+      {error?.code === 'verify_expired'
+        ? <button type="button" className="btn btnPrimary" onClick={onSignup}>Recevoir un nouveau lien</button>
+        : <Submit busy={busy}>Confirmer mon adresse</Submit>}
     </form>
   );
 }

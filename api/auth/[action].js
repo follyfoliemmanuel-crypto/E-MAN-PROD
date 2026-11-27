@@ -173,7 +173,7 @@ const actions = {
     await rateLimit(`signup:ip:${clientIp(req)}`, 10, 60);
 
     // Le rôle n'est jamais lu dans la requête : tout nouveau compte est « client ».
-    const exists = await one('select id, first_name, full_name from users where lower(email) = $1', [email]);
+    const exists = await one('select id, email, first_name, full_name, email_verified_at, disabled_at from users where lower(email) = $1', [email]);
     // Inscription sans révéler qui est inscrit : quand les e-mails fonctionnent, la réponse est la même
     // que l'adresse soit libre ou déjà prise. Le compte ne s'ouvre qu'avec le lien reçu dans la boîte
     // (preuve que l'adresse est à la personne) ; une adresse déjà inscrite reçoit un rappel de connexion.
@@ -181,8 +181,16 @@ const actions = {
     if (mailConfigured()) {
       const hash = await hashPassword(pw); // même travail dans les deux cas (pas de différence de durée)
       if (exists) {
-        await deliver(req, { to: email, userId: exists.id, template: 'account_exists', link: `${siteUrl(req)}/espace?connexion=rappel`, vars: { prenom: exists.first_name || exists.full_name } });
-        await logSecurity(req, 'auth.signup_existing', { userId: exists.id, data: { email: maskEmail(email) } });
+        // Adresse déjà inscrite (première tentative, ancien compte…) : le lien envoyé dans SA boîte ouvre
+        // « Choisissez votre mot de passe ». En l'enregistrant, l'adresse est confirmée et la session
+        // s'ouvre. Le mot de passe tapé ici n'est jamais appliqué : sinon un tiers pourrait s'inscrire
+        // avec l'adresse de quelqu'un et prendre son compte si la personne clique par réflexe.
+        if (!exists.disabled_at) {
+          const token = await issueToken(exists.id, 'reset', 24);
+          const link = `${siteUrl(req)}/espace?reinitialiser=${token}&inscription=1`;
+          await deliver(req, { to: exists.email, userId: exists.id, template: 'account_exists', link, vars: { prenom: exists.first_name || exists.full_name } });
+        }
+        await logSecurity(req, 'auth.signup_existing', { userId: exists.id, data: { email: maskEmail(email), verified: Boolean(exists.email_verified_at) } });
         return send(res, 202, { pending: true });
       }
       const created = await one(
@@ -297,9 +305,30 @@ const actions = {
   async verify(req, res) {
     const body = await readJson(req);
     await rateLimit(`verify:ip:${clientIp(req)}`, 20, 60);
-    const userId = await consumeToken(body.token, 'verify');
-    const row = await one('update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1 and disabled_at is null returning id', [userId]);
-    if (!row) throw new HttpError(403, 'Ce compte est désactivé.');
+    if (typeof body.token !== 'string' || body.token.length < 20 || body.token.length > 100) throw new HttpError(400, 'Lien invalide.');
+    const tok = await one(
+      `update verification_tokens set used_at = now()
+        where token_hash = $1 and kind = 'verify' and used_at is null and expires_at > now()
+        returning user_id`,
+      [sha256(body.token)],
+    );
+    if (!tok) {
+      // Lien déjà utilisé, remplacé ou expiré : on dit précisément quoi faire.
+      const old = await one(
+        `select t.used_at, t.expires_at, u.email_verified_at,
+                exists (select 1 from verification_tokens n where n.user_id = t.user_id and n.kind = 'verify' and n.created_at > t.created_at) as replaced
+           from verification_tokens t join users u on u.id = t.user_id
+          where t.token_hash = $1 and t.kind = 'verify'`,
+        [sha256(body.token)],
+      );
+      if (old?.email_verified_at) return send(res, 200, { alreadyVerified: true });
+      if (old?.replaced) throw Object.assign(new HttpError(400, 'Ce lien a été remplacé par un e-mail plus récent : ouvrez le dernier e-mail « E-MAN PROD » reçu.'), { code: 'verify_replaced' });
+      throw Object.assign(new HttpError(400, 'Ce lien a expiré. Inscrivez-vous de nouveau avec la même adresse : un nouveau lien vous sera envoyé.'), { code: 'verify_expired' });
+    }
+    const userId = tok.user_id;
+    const before = await one('select email_verified_at, disabled_at from users where id = $1', [userId]);
+    if (!before || before.disabled_at) throw new HttpError(403, 'Ce compte est désactivé.');
+    await one('update users set email_verified_at = coalesce(email_verified_at, now()) where id = $1 returning id', [userId]);
     await logSecurity(req, 'auth.email_verified', { userId });
     // Le lien prouve que la boîte appartient à la personne : il ouvre sa session (inscription par e-mail).
     if ((await createSession(req, res, userId, { method: 'verify' })).mfa_required) return send(res, 200, { mfa_required: true });

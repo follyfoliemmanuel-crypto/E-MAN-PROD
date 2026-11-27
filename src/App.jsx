@@ -9,7 +9,7 @@ import { MediaProvider } from './lib/media.jsx';
 import { CatalogProvider, useCatalog } from './lib/catalog.jsx';
 import { Header, Footer, WhatsAppButton } from './components/Layout.jsx';
 import Modal from './components/Modal.jsx';
-import { QuoteForm, AuthForm, NewPasswordForm } from './components/forms.jsx';
+import { QuoteForm, AuthForm, NewPasswordForm, VerifyEmailForm } from './components/forms.jsx';
 import { applySettings } from './config.js';
 import { Home, Contact, MentionsLegales, Confidentialite, ConditionsGenerales, VerifyCertificate } from './pages/public.jsx';
 import { PrestationsIndex, PrestationPage } from './pages/prestations.jsx';
@@ -122,18 +122,17 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const verifyToken = params.get('verifier');
     const resetToken = params.get('reinitialiser');
+    const signupAgain = params.get('inscription') === '1';
     const google = params.get('connexion');
     const mfaStep = params.get('mfa') === '1';
-    if (verifyToken || resetToken || google || mfaStep) navigate(window.location.pathname, { replace: true });
+    if (verifyToken || resetToken || google || mfaStep || signupAgain) navigate(window.location.pathname, { replace: true });
 
     (async () => {
       try {
-        if (verifyToken) {
-          const r = await auth.verify({ token: verifyToken });
-          if (r.mfa_required) { setModal({ type: 'mfa' }); return; }
-          setUser(r.user);
-          notify(r.claimed ? `Adresse confirmée. ${r.claimed} demande(s) ajoutée(s) à votre espace.` : 'Adresse e-mail confirmée.');
-        } else {
+        // Lien de confirmation : une fenêtre demande un clic (« Confirmer mon adresse ») avant d'utiliser
+        // le lien, pour qu'un logiciel qui ouvre les liens des e-mails à l'avance ne le consomme pas.
+        if (verifyToken) setModal({ type: 'verify', token: verifyToken });
+        {
           const r = await auth.me();
           setUser(r.user);
           setMethods({ google: Boolean(r.google), mail: Boolean(r.mail) });
@@ -161,7 +160,7 @@ export default function App() {
       } finally {
         setReady(true);
       }
-      if (resetToken) setModal({ type: 'password', token: resetToken });
+      if (resetToken) setModal({ type: 'password', token: resetToken, welcome: signupAgain });
     })();
   }, [notify]);
 
@@ -209,7 +208,7 @@ export default function App() {
   };
 
   const { Page } = route;
-  const labels = { quote: 'Demander un devis', auth: modal?.mode === 'signup' ? 'Créer un compte' : 'Se connecter', password: 'Nouveau mot de passe', mfa: 'Vérification en deux étapes', stepup: 'Confirmer avec votre code' };
+  const labels = { quote: 'Demander un devis', auth: modal?.mode === 'signup' ? 'Créer un compte' : 'Se connecter', password: 'Nouveau mot de passe', verify: 'Confirmer votre adresse', mfa: 'Vérification en deux étapes', stepup: 'Confirmer avec votre code' };
 
   return (
     <AppContext.Provider value={ctx}>
@@ -244,7 +243,17 @@ export default function App() {
                   startDemo={() => onAuthenticated(auth.demoUser())}
                 />
               )}
-              {modal.type === 'password' && <NewPasswordForm token={modal.token} notify={notify} onDone={onAuthenticated} onMfa={() => setModal({ type: 'mfa' })} />}
+              {modal.type === 'verify' && (
+                <VerifyEmailForm
+                  token={modal.token}
+                  notify={notify}
+                  onDone={(u, claimed) => { onAuthenticated(u); notify(claimed ? `Adresse confirmée, vous êtes connecté. ${claimed} demande(s) ajoutée(s) à votre espace.` : 'Adresse confirmée, vous êtes connecté. Bienvenue chez E-MAN PROD !'); }}
+                  onMfa={() => setModal({ type: 'mfa' })}
+                  onLogin={() => setModal({ type: 'auth', mode: 'login' })}
+                  onSignup={() => setModal({ type: 'auth', mode: 'signup' })}
+                />
+              )}
+              {modal.type === 'password' && <NewPasswordForm token={modal.token} welcome={modal.welcome} notify={notify} onDone={onAuthenticated} onMfa={() => setModal({ type: 'mfa' })} />}
               {modal.type === 'mfa' && <MfaLoginForm notify={notify} onDone={onAuthenticated} onExpired={() => setModal({ type: 'auth', mode: 'login' })} />}
               {modal.type === 'stepup' && <StepUpForm onDone={(ok) => { modal.resolve(ok); setModal(null); }} />}
             </>

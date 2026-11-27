@@ -20,9 +20,9 @@ export const TEMPLATES = {
     vars: ['prenom', 'lien'],
     subject: 'Vous avez déjà un compte E-MAN PROD',
     title: 'Votre compte existe déjà',
-    intro: 'Bonjour {prenom}, quelqu’un (sans doute vous) a voulu créer un compte E-MAN PROD avec cette adresse. Vous en avez déjà un : connectez-vous, ou choisissez un nouveau mot de passe si vous l’avez oublié.',
-    cta: 'Me connecter',
-    outro: 'Si vous n’êtes pas à l’origine de cette demande, ignorez ce message : rien n’a été modifié.',
+    intro: 'Bonjour {prenom}, une inscription vient d’être faite avec une adresse qui a déjà un compte E-MAN PROD (peut-être votre première tentative). Cliquez sur le bouton et choisissez votre mot de passe : votre adresse est confirmée et vous êtes connecté directement.',
+    cta: 'Choisir mon mot de passe et me connecter',
+    outro: 'Ce lien est valable 24 heures. Si vous n’êtes pas à l’origine de cette inscription, ignorez ce message : rien ne change sur votre compte.',
   },
   password_reset: {
     label: 'Réinitialisation du mot de passe', category: 'account',
